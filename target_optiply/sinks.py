@@ -424,18 +424,18 @@ class ProductsSink(BaseOptiplySink):
             attributes: The attributes dictionary to update
         """
         # Handle resumingPurchase field - convert boolean to string array
-        if "resumingPurchase" in record and record["resumingPurchase"] is not None:
-            if record["resumingPurchase"]:
-                attributes["resumingPurchase"] = ["true"]
-            else:
-                attributes["resumingPurchase"] = ["false"]
+        #if "resumingPurchase" in record and record["resumingPurchase"] is not None:
+        #    if record["resumingPurchase"]:
+        #        attributes["resumingPurchase"] = ["true"]
+        #    else:
+        #        attributes["resumingPurchase"] = ["false"]
         
         # Handle notBeingBought field - convert boolean to string array
-        if "notBeingBought" in record and record["notBeingBought"] is not None:
-            if record["notBeingBought"]:
-                attributes["notBeingBought"] = ["true"]
-            else:
-                attributes["notBeingBought"] = ["false"]
+        #if "notBeingBought" in record and record["notBeingBought"] is not None:
+        #    if record["notBeingBought"]:
+        #        attributes["notBeingBought"] = ["true"]
+        #    else:
+        #        attributes["notBeingBought"] = ["false"]
 
 class SupplierSink(BaseOptiplySink):
     """Optiply target sink class for suppliers."""
