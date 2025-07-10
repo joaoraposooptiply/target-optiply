@@ -1,0 +1,47 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: "target-optiply"
+default_environment: test
+environments:
+- name: test
+plugins:
+  extractors: []
+  loaders:
+  - name: "target-optiply"
+    namespace: "target_optiply"
+    pip_url: -e .
+    capabilities:
+    - about
+    - stream-maps
+    - record-flattening
+    config:
+      start_date: '2010-01-01T00:00:00Z'
+    settings:
+    - name: username
+      description: "Optiply API username"
+      kind: string
+      required: true
+    - name: client_id
+      description: "Optiply API client ID"
+      kind: string
+      required: true
+    - name: client_secret
+      description: "Optiply API client secret"
+      kind: password
+      required: true
+    - name: password
+      description: "Optiply API password"
+      kind: password
+      required: true
+    - name: account_id
+      description: "Optiply account ID"
+      kind: integer
+    - name: coupling_id
+      description: "Optiply coupling ID"
+      kind: integer
+    - name: start_date
+      description: "Start date for data sync"
+      value: '2010-01-01T00:00:00Z'
+    - name: hotglue_metadata
+      description: "Hotglue metadata configuration"
+      kind: object
