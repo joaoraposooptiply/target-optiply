@@ -16,15 +16,26 @@ class OptiplyAuthenticator:
 
     def __init__(
         self,
-        config: Dict[str, Any],
+        target,
         auth_endpoint: Optional[str] = None,
     ) -> None:
-        # Debug logging to see what config we're receiving
-        logger.info(f"Received config: {config}")
-        
-        # Use importCredentials if available, otherwise fall back to top-level config
-        self._config = config["importCredentials"]
+        """Initialize authenticator.
+
+        Args:
+            target: The target instance.
+            auth_endpoint: Optional custom auth endpoint.
+        """
+        self.target_name: str = target.name
+        # Get the full config from target and access importCredentials
+        full_config: Dict[str, Any] = target._config
+        if "importCredentials" in full_config:
+            self._config: Dict[str, Any] = full_config["importCredentials"]
+        else:
+            self._config: Dict[str, Any] = full_config
             
+        self._auth_headers: Dict[str, Any] = {}
+        self._auth_params: Dict[str, Any] = {}
+        self.logger: logging.Logger = target.logger
         self._auth_endpoint = auth_endpoint or os.environ.get(
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token?grant_type=password"

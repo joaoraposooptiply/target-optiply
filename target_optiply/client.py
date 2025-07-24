@@ -61,8 +61,8 @@ class OptiplySink(HotglueSink):
             The authenticator instance.
         """
         if self._authenticator is None:
-            # Use the target's config to ensure we get the full config structure
-            self._authenticator = OptiplyAuthenticator(self._target.config)
+            # Pass the target to the authenticator (following ExactAuthenticator pattern)
+            self._authenticator = OptiplyAuthenticator(self._target)
         return self._authenticator
 
     def http_headers(self) -> Dict[str, str]:
