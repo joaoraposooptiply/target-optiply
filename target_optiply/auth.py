@@ -20,10 +20,8 @@ class OptiplyAuthenticator:
         auth_endpoint: Optional[str] = None,
     ) -> None:
         # Use importCredentials if available, otherwise fall back to top-level config
-        if "importCredentials" in config:
-            self._config = config["importCredentials"]
-        else:
-            self._config = config
+      
+        self._config = config["importCredentials"]
             
         self._auth_endpoint = auth_endpoint or os.environ.get(
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
