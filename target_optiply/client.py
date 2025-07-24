@@ -9,9 +9,9 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import requests
-from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
-
-from singer_sdk.sinks import RecordSink
+from hotglue_sdk.exceptions import FatalAPIError, RetriableAPIError
+from target_hotglue.client import HotglueSink
+from singer_sdk.plugin_base import PluginBase
 
 from target_optiply.auth import OptiplyAuthenticator
 
@@ -26,14 +26,14 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-class OptiplySink(RecordSink):
+class OptiplySink(HotglueSink):
     """Optiply target sink class."""
 
     base_url = os.environ.get("optiply_base_url", "https://api.optiply.com/v1")
 
     def __init__(
         self,
-        target: Any,
+        target: PluginBase,
         stream_name: str,
         schema: Dict,
         key_properties: Optional[List[str]] = None,
@@ -46,6 +46,7 @@ class OptiplySink(RecordSink):
             schema: The schema for the stream.
             key_properties: The key properties for the stream.
         """
+        self._target = target
         super().__init__(target, stream_name, schema, key_properties)
         self._authenticator = None
         self._session = None
@@ -69,10 +70,13 @@ class OptiplySink(RecordSink):
         Returns:
             The HTTP headers.
         """
-        return {
+        headers = {}
+        headers.update(self.authenticator.auth_headers or {})
+        headers.update({
             "Content-Type": "application/vnd.api+json",
             "Accept": "application/vnd.api+json"
-        }
+        })
+        return headers
 
     def validate_response(self, response: requests.Response) -> None:
         """Validate the response from the API.
@@ -106,7 +110,7 @@ class OptiplySink(RecordSink):
     ) -> requests.Response:
         """Make a request with automatic token refresh on 401 errors."""
         url = self.url(endpoint)
-        headers = {**self.http_headers(), **self.authenticator.auth_headers}
+        headers = self.http_headers()
 
         # First attempt
         response = requests.request(
@@ -125,7 +129,7 @@ class OptiplySink(RecordSink):
                 self._authenticator.force_refresh()
                 
                 # Get fresh headers with new token
-                headers = {**self.http_headers(), **self.authenticator.auth_headers}
+                headers = self.http_headers()
                 
                 # Retry the request with new token
                 response = requests.request(
@@ -171,23 +175,8 @@ class OptiplySink(RecordSink):
             url = f"{url}?{query_string}"
         return url
 
-    def process_record(self, record: dict, context: dict) -> None:
-        """Process the record.
-
-        Args:
-            record: Individual record in the stream.
-            context: Stream partition or context dictionary.
-        """
-        # This method will be overridden by specific sink implementations
-        pass
-
-    def get_url(self, context: dict = None) -> str:
-        """Get the base URL for the API.
-        
-        Args:
-            context: Optional context dictionary
-            
-        Returns:
-            The base URL
-        """
-        return self.base_url
+    def request_api(self, http_method, endpoint=None, params={}, request_data=None, headers={}):
+        """Request records from REST endpoint(s), returning response records."""
+        self.logger.info(f"REQUEST - endpoint: {endpoint}, request_body: {request_data}")
+        resp = self._request(http_method, endpoint, params, request_data, headers)
+        return resp
