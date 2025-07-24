@@ -27,11 +27,18 @@ class OptiplyAuthenticator:
         """
         self._config = config
         self._auth_endpoint = auth_endpoint or os.environ.get(
-            "optiply_dashboard_url", "https://dashboard.optiply.nl/api"
-        ) + "/auth/oauth/token"
-        self._access_token = None
+            "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
+        ) + "/auth/oauth/token?grant_type=password"
+        
+        # Use existing access_token if provided in config
+        self._access_token = config.get("access_token")
         self._token_expires_at = None
         self._refresh_token = None
+        
+        # If we have an access_token, assume it's valid for now
+        if self._access_token:
+            # Set expiration to 1 hour from now as a reasonable default
+            self._token_expires_at = datetime.utcnow() + timedelta(hours=1)
 
     @property
     def auth_headers(self) -> Dict[str, str]:
@@ -55,11 +62,8 @@ class OptiplyAuthenticator:
             Dictionary containing OAuth request parameters.
         """
         return {
-            "grant_type": "password",
             "username": self._config["username"],
-            "password": self._config["password"],
-            "client_id": self._config["client_id"],
-            "client_secret": self._config["client_secret"]
+            "password": self._config["password"]
         }
 
     def is_token_valid(self) -> bool:
@@ -83,11 +87,17 @@ class OptiplyAuthenticator:
         logger.info("Starting token refresh process")
         
         try:
-            # Prepare Basic Auth headers
-            client_id = self._config["client_id"]
+            # Prepare Basic Auth headers - use client_id:client_secret for Basic Auth
+            client_id = self._config.get("client_id") or self._config.get("clientId")
             client_secret = self._config["client_secret"]
             import base64
-            basic_auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            
+            # Match JavaScript btoa() behavior - encode as UTF-8 first
+            client_id_secret = f"{client_id}:{client_secret}"
+            # Use UTF-8 encoding to match JavaScript btoa()
+            basic_auth = base64.b64encode(client_id_secret.encode('utf-8')).decode('utf-8')
+            
+
             
             headers = {
                 "Authorization": f"Basic {basic_auth}",
@@ -95,6 +105,8 @@ class OptiplyAuthenticator:
             }
             
             logger.info(f"Making token request to: {self._auth_endpoint}")
+            logger.info(f"Request body: {self.oauth_request_body}")
+            logger.info(f"Headers: {headers}")
             
             # Make the token request
             response = requests.post(

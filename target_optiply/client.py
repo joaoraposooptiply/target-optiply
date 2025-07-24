@@ -29,7 +29,7 @@ class DateTimeEncoder(json.JSONEncoder):
 class OptiplySink(HotglueSink):
     """Optiply target sink class."""
 
-    base_url = os.environ.get("optiply_base_url", "https://api.optiply.com/v1")
+    base_url = os.environ.get("optiply_base_url", "https://api.acceptance.optiply.com/v1")
 
     def __init__(
         self,
