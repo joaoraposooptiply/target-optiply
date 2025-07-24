@@ -100,7 +100,15 @@ class OptiplyAuthenticator:
                 "Content-Type": "application/x-www-form-urlencoded"
             }
             
+            # Log the auth request details (mask sensitive data)
             logger.info(f"Making token request to: {self._auth_endpoint}")
+            logger.info(f"Client ID: {client_id}")
+            logger.info(f"Client Secret: {client_secret[:8]}...{client_secret[-4:] if len(client_secret) > 12 else '***'}")
+            logger.info(f"Username: {self._config['username']}")
+            logger.info(f"Password: {self._config['password'][:4]}...{self._config['password'][-2:] if len(self._config['password']) > 6 else '***'}")
+            logger.info(f"Basic Auth Header: Basic {basic_auth[:20]}...{basic_auth[-10:] if len(basic_auth) > 30 else '***'}")
+            logger.info(f"Request Headers: {headers}")
+            logger.info(f"Request Body: {self.oauth_request_body}")
             
             # Make the token request
             response = requests.post(
@@ -110,10 +118,15 @@ class OptiplyAuthenticator:
                 timeout=30
             )
             
+            logger.info(f"Auth Response Status: {response.status_code}")
+            logger.info(f"Auth Response Headers: {dict(response.headers)}")
+            
             if response.status_code != 200:
+                logger.error(f"Auth Response Body: {response.text}")
                 raise Exception(f"Token request failed with status {response.status_code}: {response.text}")
             
             token_data = response.json()
+            logger.info(f"Auth Response Body: {token_data}")
             
             # Update token information
             self._access_token = token_data["access_token"]
@@ -124,6 +137,7 @@ class OptiplyAuthenticator:
             self._token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
             
             logger.info("Successfully updated access token")
+            logger.info(f"Token expires at: {self._token_expires_at}")
             
         except Exception as e:
             logger.error(f"Failed to update access token: {str(e)}")
