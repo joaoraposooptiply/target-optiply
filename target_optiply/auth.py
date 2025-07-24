@@ -16,16 +16,16 @@ class OptiplyAuthenticator:
 
     def __init__(
         self,
-        config: Dict[str, Any],
+        target,
         auth_endpoint: Optional[str] = None,
     ) -> None:
         """Initialize authenticator.
 
         Args:
-            config: Configuration dictionary containing credentials.
+            target: The target instance.
             auth_endpoint: Optional custom auth endpoint.
         """
-        self._config = config
+        self._config: Dict[str, Any] = target._config
         self._auth_endpoint = auth_endpoint or os.environ.get(
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token"
@@ -60,12 +60,13 @@ class OptiplyAuthenticator:
         Returns:
             Dictionary containing OAuth request parameters.
         """
+        auth_config = self._get_auth_config()
         return {
             "grant_type": "password",
-            "username": self._config["username"],
-            "password": self._config["password"],
-            "client_id": self._config["client_id"],
-            "client_secret": self._config["client_secret"]
+            "username": auth_config["username"],
+            "password": auth_config["password"],
+            "client_id": auth_config["client_id"],
+            "client_secret": auth_config["client_secret"]
         }
 
     def is_token_valid(self) -> bool:
@@ -90,8 +91,9 @@ class OptiplyAuthenticator:
         
         try:
             # Prepare Basic Auth headers
-            client_id = self._config["client_id"]
-            client_secret = self._config["client_secret"]
+            auth_config = self._get_auth_config()
+            client_id = auth_config["client_id"]
+            client_secret = auth_config["client_secret"]
             import base64
             basic_auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
             
@@ -148,3 +150,14 @@ class OptiplyAuthenticator:
         self._access_token = None
         self._token_expires_at = None
         self.update_access_token()
+
+    def _get_auth_config(self) -> Dict[str, Any]:
+        """Get the authentication config from the appropriate section."""
+        # Check for nested credential sections first
+        if "importCredentials" in self._config:
+            return self._config["importCredentials"]
+        elif "apiCredentials" in self._config:
+            return self._config["apiCredentials"]
+        else:
+            # Use top-level config (for deployed environment)
+            return self._config

@@ -81,21 +81,31 @@ class OptiplySink(HotglueSink):
             else:
                 self.logger.info("apiCredentials NOT found in config")
             
-            # Always use importCredentials section
+            # Extract credentials from the appropriate section
             if "importCredentials" in full_config:
                 auth_config = full_config["importCredentials"]
                 self.logger.info("✅ USING importCredentials section for authentication")
+            elif "apiCredentials" in full_config:
+                auth_config = full_config["apiCredentials"]
+                self.logger.info("✅ USING apiCredentials section for authentication")
             else:
-                auth_config = full_config
-                self.logger.warning("❌ importCredentials not found, using top-level config")
+                # Use top-level config (for deployed environment)
+                auth_config = {
+                    "client_id": full_config.get("client_id"),
+                    "client_secret": full_config.get("client_secret"),
+                    "username": full_config.get("username"),
+                    "password": full_config.get("password"),
+                    "access_token": full_config.get("access_token")
+                }
+                self.logger.info("✅ USING top-level config for authentication")
             
             # Log the final auth config being used
             self.logger.info(f"Final auth config keys: {list(auth_config.keys())}")
             self.logger.info(f"Final auth config client_id: {auth_config.get('client_id', 'NOT_FOUND')}")
             self.logger.info(f"Final auth config client_secret: {auth_config.get('client_secret', 'NOT_FOUND')[:8]}...{auth_config.get('client_secret', 'NOT_FOUND')[-4:] if len(auth_config.get('client_secret', '')) > 12 else '***'}")
             
-            # Pass the auth config to the authenticator
-            self._authenticator = OptiplyAuthenticator(auth_config)
+            # Pass the target to the authenticator
+            self._authenticator = OptiplyAuthenticator(self._target)
         return self._authenticator
 
     def http_headers(self) -> Dict[str, str]:
