@@ -77,8 +77,14 @@ class BaseOptiplySink(OptiplySink):
             if http_method == "POST":
                 mandatory_fields = self.get_mandatory_fields()
                 missing_fields = []
+                
+                # Get the actual record data - it might be nested in data.attributes
+                actual_record = record
+                if 'data' in record and 'attributes' in record['data']:
+                    actual_record = record['data']['attributes']
+                
                 for field in mandatory_fields:
-                    if field not in record or record[field] is None or (isinstance(record[field], str) and not record[field].strip()):
+                    if field not in actual_record or actual_record[field] is None or (isinstance(actual_record[field], str) and not actual_record[field].strip()):
                         missing_fields.append(field)
                 if missing_fields:
                     error_msg = f"Record skipped due to missing mandatory fields: {', '.join(missing_fields)}"
@@ -228,117 +234,130 @@ class BaseOptiplySink(OptiplySink):
         return []
 
 
-class ProductsSink(BaseOptiplySink):
-    """Products sink class."""
-
-    endpoint = "products"
+def create_sink_class(class_name: str, endpoint_name: str, field_mappings_dict: Dict[str, str], mandatory_fields_list: List[str] = None):
+    """Factory function to create sink classes with minimal repetition."""
     
-    @property
-    def name(self) -> str:
-        return "Products"
-    field_mappings = {
-        "name": "name",
-        "skuCode": "skuCode",
-        "eanCode": "eanCode",
-        "articleCode": "articleCode",
-        "price": "price",
-        "unlimitedStock": "unlimitedStock",
-        "stockLevel": "stockLevel",
-        "notBeingBought": "notBeingBought",
-        "resumingPurchase": "resumingPurchase",
-        "status": "status",
-        "assembled": "assembled",
-        "minimumStock": "minimumStock",
-        "maximumStock": "maximumStock",
-        "ignored": "ignored",
-        "manualServiceLevel": "manualServiceLevel",
-        "createdAtRemote": "createdAtRemote",
-        "stockMeasurementUnit": "stockMeasurementUnit"
-    }
-
-    def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
-        return ["name", "stockLevel", "unlimitedStock"]
-
-
-class SupplierSink(BaseOptiplySink):
-    """Optiply target sink class for suppliers."""
-
-    endpoint = "suppliers"
+    class DynamicSink(BaseOptiplySink):
+        """Dynamically created sink class."""
+        
+        endpoint = endpoint_name
+        field_mappings = field_mappings_dict
+        
+        @property
+        def name(self) -> str:
+            return class_name
+        
+        def get_mandatory_fields(self) -> List[str]:
+            """Get the list of mandatory fields for this sink."""
+            return mandatory_fields_list or []
     
-    @property
-    def name(self) -> str:
-        return "Suppliers"
-    field_mappings = {
-        "name": "name",
-        "emails": "emails",
-        "minimumOrderValue": "minimumOrderValue",
-        "fixedCosts": "fixedCosts",
-        "deliveryTime": "deliveryTime",
-        "userReplenishmentPeriod": "userReplenishmentPeriod",
-        "reactingToLostSales": "reactingToLostSales",
-        "lostSalesReaction": "lostSalesReaction",
-        "lostSalesMovReaction": "lostSalesMovReaction",
-        "backorders": "backorders",
-        "backorderThreshold": "backorderThreshold",
-        "backordersReaction": "backordersReaction",
-        "maxLoadCapacity": "maxLoadCapacity",
-        "containerVolume": "containerVolume",
-        "ignored": "ignored",
-        "globalLocationNumber": "globalLocationNumber",
-        "type": "type"
-    }
-
-    def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
-        return ["name"]
-
-
-class SupplierProductSink(BaseOptiplySink):
-    """Optiply target sink class for supplier products."""
-
-    endpoint = "supplierProducts"
+    # Set the class name for better debugging
+    DynamicSink.__name__ = f"{class_name}Sink"
+    DynamicSink.__qualname__ = f"{class_name}Sink"
     
-    @property
-    def name(self) -> str:
-        return "SupplierProducts"
-    field_mappings = {
-        "name": "name",
-        "skuCode": "skuCode",
-        "eanCode": "eanCode",
-        "articleCode": "articleCode",
-        "price": "price",
-        "minimumPurchaseQuantity": "minimumPurchaseQuantity",
-        "lotSize": "lotSize",
-        "availability": "availability",
-        "availabilityDate": "availabilityDate",
-        "preferred": "preferred",
-        "productId": "productId",
-        "supplierId": "supplierId",
-        "deliveryTime": "deliveryTime",
-        "status": "status",
-        "freeStock": "freeStock",
-        "weight": "weight",
-        "volume": "volume"
-    }
-
-    def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
-        return ["name", "productId", "supplierId"]
+    return DynamicSink
 
 
+# Define field mappings for each stream type
+PRODUCTS_FIELDS = {
+    "name": "name",
+    "skuCode": "skuCode",
+    "eanCode": "eanCode",
+    "articleCode": "articleCode",
+    "price": "price",
+    "unlimitedStock": "unlimitedStock",
+    "stockLevel": "stockLevel",
+    "notBeingBought": "notBeingBought",
+    "resumingPurchase": "resumingPurchase",
+    "status": "status",
+    "assembled": "assembled",
+    "minimumStock": "minimumStock",
+    "maximumStock": "maximumStock",
+    "ignored": "ignored",
+    "manualServiceLevel": "manualServiceLevel",
+    "createdAtRemote": "createdAtRemote",
+    "stockMeasurementUnit": "stockMeasurementUnit"
+}
+
+SUPPLIERS_FIELDS = {
+    "name": "name",
+    "emails": "emails",
+    "minimumOrderValue": "minimumOrderValue",
+    "fixedCosts": "fixedCosts",
+    "deliveryTime": "deliveryTime",
+    "userReplenishmentPeriod": "userReplenishmentPeriod",
+    "reactingToLostSales": "reactingToLostSales",
+    "lostSalesReaction": "lostSalesReaction",
+    "lostSalesMovReaction": "lostSalesMovReaction",
+    "backorders": "backorders",
+    "backorderThreshold": "backorderThreshold",
+    "backordersReaction": "backordersReaction",
+    "maxLoadCapacity": "maxLoadCapacity",
+    "containerVolume": "containerVolume",
+    "ignored": "ignored",
+    "globalLocationNumber": "globalLocationNumber",
+    "type": "type"
+}
+
+SUPPLIER_PRODUCTS_FIELDS = {
+    "name": "name",
+    "skuCode": "skuCode",
+    "eanCode": "eanCode",
+    "articleCode": "articleCode",
+    "price": "price",
+    "minimumPurchaseQuantity": "minimumPurchaseQuantity",
+    "lotSize": "lotSize",
+    "availability": "availability",
+    "availabilityDate": "availabilityDate",
+    "preferred": "preferred",
+    "productId": "productId",
+    "supplierId": "supplierId",
+    "deliveryTime": "deliveryTime",
+    "status": "status",
+    "freeStock": "freeStock",
+    "weight": "weight",
+    "volume": "volume"
+}
+
+BUY_ORDERS_FIELDS = {
+    "placed": "placed",
+    "completed": "completed",
+    "expectedDeliveryDate": "expectedDeliveryDate",
+    "totalValue": "totalValue",
+    "supplierId": "supplierId",
+    "accountId": "accountId",
+    "assembly": "assembly"
+}
+
+BUY_ORDER_LINES_FIELDS = {
+    "quantity": "quantity",
+    "subtotalValue": "subtotalValue",
+    "productId": "productId",
+    "buyOrderId": "buyOrderId",
+    "expectedDeliveryDate": "expectedDeliveryDate"
+}
+
+SELL_ORDERS_FIELDS = {
+    "placed": "placed",
+    "totalValue": "totalValue"
+}
+
+SELL_ORDER_LINES_FIELDS = {
+    "quantity": "quantity",
+    "subtotalValue": "subtotalValue",
+    "productId": "productId",
+    "sellOrderId": "sellOrderId"
+}
+
+# Create sink classes using the factory function
+ProductsSink = create_sink_class("Products", "products", PRODUCTS_FIELDS, ["name", "stockLevel", "unlimitedStock"])
+SupplierSink = create_sink_class("Suppliers", "suppliers", SUPPLIERS_FIELDS, ["name"])
+SupplierProductSink = create_sink_class("SupplierProducts", "supplierProducts", SUPPLIER_PRODUCTS_FIELDS, ["name", "productId", "supplierId"])
+BuyOrderLineSink = create_sink_class("BuyOrderLines", "buyOrderLines", BUY_ORDER_LINES_FIELDS, ["subtotalValue", "productId", "quantity", "buyOrderId"])
+SellOrderLineSink = create_sink_class("SellOrderLines", "sellOrderLines", SELL_ORDER_LINES_FIELDS, ["subtotalValue", "sellOrderId", "productId", "quantity"])
+
+
+# Custom sink classes that need special logic
 class BuyOrderSink(BaseOptiplySink):
     """Optiply target sink class for buy orders."""
 
@@ -347,33 +366,15 @@ class BuyOrderSink(BaseOptiplySink):
     @property
     def name(self) -> str:
         return "BuyOrders"
-    field_mappings = {
-        "placed": "placed",
-        "completed": "completed",
-        "expectedDeliveryDate": "expectedDeliveryDate",
-        "totalValue": "totalValue",
-        "supplierId": "supplierId",
-        "accountId": "accountId",
-        "assembly": "assembly"
-    }
+    
+    field_mappings = BUY_ORDERS_FIELDS
 
     def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
+        """Get the list of mandatory fields for this sink."""
         return ["placed", "totalValue", "supplierId", "accountId"]
 
     def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
-        """Add any additional attributes that are not covered by field mappings.
-        
-        This method can be overridden by subclasses to add custom attributes.
-        
-        Args:
-            record: The record to transform
-            attributes: The attributes dictionary to update
-        """
+        """Add any additional attributes that are not covered by field mappings."""
         if "line_items" in record:
             line_items = json.loads(record["line_items"])
             buy_order_lines = []
@@ -394,31 +395,6 @@ class BuyOrderSink(BaseOptiplySink):
             attributes["orderLines"] = buy_order_lines
 
 
-class BuyOrderLineSink(BaseOptiplySink):
-    """Optiply target sink class for buy order lines."""
-
-    endpoint = "buyOrderLines"
-    
-    @property
-    def name(self) -> str:
-        return "BuyOrderLines"
-    field_mappings = {
-        "quantity": "quantity",
-        "subtotalValue": "subtotalValue",
-        "productId": "productId",
-        "buyOrderId": "buyOrderId",
-        "expectedDeliveryDate": "expectedDeliveryDate"
-    }
-
-    def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
-        return ["subtotalValue", "productId", "quantity", "buyOrderId"]
-
-
 class SellOrderSink(BaseOptiplySink):
     """Optiply target sink class for sell orders."""
 
@@ -427,28 +403,15 @@ class SellOrderSink(BaseOptiplySink):
     @property
     def name(self) -> str:
         return "SellOrders"
-    field_mappings = {
-        "placed": "placed",
-        "totalValue": "totalValue"
-    }
+    
+    field_mappings = SELL_ORDERS_FIELDS
 
     def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
+        """Get the list of mandatory fields for this sink."""
         return ["totalValue", "placed"]
 
     def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
-        """Add any additional attributes that are not covered by field mappings.
-        
-        This method can be overridden by subclasses to add custom attributes.
-        
-        Args:
-            record: The record to transform
-            attributes: The attributes dictionary to update
-        """
+        """Add any additional attributes that are not covered by field mappings."""
         if "line_items" in record:
             line_items = json.loads(record["line_items"])
             sell_order_lines = []
@@ -466,27 +429,3 @@ class SellOrderSink(BaseOptiplySink):
                 })
             attributes["totalValue"] = str(total_value)
             attributes["orderLines"] = sell_order_lines
-
-
-class SellOrderLineSink(BaseOptiplySink):
-    """Optiply target sink class for sell order lines."""
-
-    endpoint = "sellOrderLines"
-    
-    @property
-    def name(self) -> str:
-        return "SellOrderLines"
-    field_mappings = {
-        "quantity": "quantity",
-        "subtotalValue": "subtotalValue",
-        "productId": "productId",
-        "sellOrderId": "sellOrderId"
-    }
-
-    def get_mandatory_fields(self) -> List[str]:
-        """Get the list of mandatory fields for this sink.
-
-        Returns:
-            The list of mandatory fields.
-        """
-        return ["subtotalValue", "sellOrderId", "productId", "quantity"]
