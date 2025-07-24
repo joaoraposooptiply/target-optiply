@@ -27,11 +27,17 @@ class OptiplyAuthenticator:
         """
         self._config = config
         self._auth_endpoint = auth_endpoint or os.environ.get(
-            "optiply_dashboard_url", "https://dashboard.optiply.nl/api"
+            "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token"
-        self._access_token = None
+        # Use existing access_token if provided in config
+        self._access_token = self._config.get("access_token")
         self._token_expires_at = None
         self._refresh_token = None
+        
+        # If we have an access_token, assume it's valid for now
+        if self._access_token:
+            # Set expiration to 1 hour from now as a reasonable default
+            self._token_expires_at = datetime.utcnow() + timedelta(hours=1)
 
     @property
     def auth_headers(self) -> Dict[str, str]:

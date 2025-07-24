@@ -28,7 +28,6 @@ class DateTimeEncoder(json.JSONEncoder):
 
 class OptiplySink(HotglueSink):
     """Optiply target sink class."""
-
     base_url = os.environ.get("optiply_base_url", "https://api.acceptance.optiply.com/v1")
 
     def __init__(
@@ -61,8 +60,14 @@ class OptiplySink(HotglueSink):
             The authenticator instance.
         """
         if self._authenticator is None:
-            # Pass the target to the authenticator (following ExactAuthenticator pattern)
-            self._authenticator = OptiplyAuthenticator(self._target)
+            # Get the config from target and use importCredentials if available
+            full_config = self._target._config
+            if "importCredentials" in full_config:
+                auth_config = full_config["importCredentials"]
+            else:
+                auth_config = full_config
+            # Pass the auth config to the authenticator
+            self._authenticator = OptiplyAuthenticator(auth_config)
         return self._authenticator
 
     def http_headers(self) -> Dict[str, str]:
@@ -176,8 +181,36 @@ class OptiplySink(HotglueSink):
             url = f"{url}?{query_string}"
         return url
 
-    def request_api(self, http_method, endpoint=None, params={}, request_data=None, headers={}):
-        """Request records from REST endpoint(s), returning response records."""
-        self.logger.info(f"REQUEST - endpoint: {endpoint}, request_body: {request_data}")
-        resp = self._request(http_method, endpoint, params, request_data, headers)
-        return resp
+    def request_api(self, http_method: str, endpoint: str = None, params: dict = {}, request_data: dict = None, headers: dict = {}) -> requests.Response:
+        """Make an API request with retry logic."""
+        import backoff
+        
+        @backoff.on_exception(backoff.expo, 
+                             (requests.exceptions.RequestException, ConnectionResetError),
+                             max_tries=3, max_time=30)
+        def _make_request():
+            url = f"{self.base_url}/{endpoint}"
+            request_headers = self.http_headers().copy()
+            if headers:
+                request_headers.update(headers)
+            
+            self.logger.info(f"Making {http_method} request to: {endpoint}")
+            if request_data:
+                self.logger.info(f"REQUEST - endpoint: {endpoint}, request_body: {request_data}")
+            
+            response = requests.request(
+                method=http_method,
+                url=url,
+                json=request_data,
+                headers=request_headers,
+                timeout=30
+            )
+            
+            # Log response for debugging
+            self.logger.info(f"Response status: {response.status_code}")
+            if response.status_code >= 400:
+                self.logger.error(f"API Error: {response.status_code} - {response.text}")
+            
+            return response
+        
+        return _make_request()
