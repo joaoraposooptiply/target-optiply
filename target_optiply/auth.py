@@ -26,13 +26,8 @@ class OptiplyAuthenticator:
             auth_endpoint: Optional custom auth endpoint.
         """
         self.target_name: str = target.name
-        # Get the full config from target and access importCredentials
-        full_config: Dict[str, Any] = target._config
-        if "importCredentials" in full_config:
-            self._config: Dict[str, Any] = full_config["importCredentials"]
-        else:
-            self._config: Dict[str, Any] = full_config
-            
+        # Get the config from target (like ExactAuthenticator)
+        self._config: Dict[str, Any] = target._config
         self._auth_headers: Dict[str, Any] = {}
         self._auth_params: Dict[str, Any] = {}
         self.logger: logging.Logger = target.logger
@@ -49,6 +44,12 @@ class OptiplyAuthenticator:
         if self._access_token:
             # Set expiration to 1 hour from now as a reasonable default
             self._token_expires_at = datetime.utcnow() + timedelta(hours=1)
+
+    def _get_auth_config(self) -> Dict[str, Any]:
+        """Get the authentication config (from importCredentials if available)."""
+        if "importCredentials" in self._config:
+            return self._config["importCredentials"]
+        return self._config
 
     @property
     def auth_headers(self) -> Dict[str, str]:
@@ -71,9 +72,10 @@ class OptiplyAuthenticator:
         Returns:
             Dictionary containing OAuth request parameters.
         """
+        auth_config = self._get_auth_config()
         return {
-            "username": self._config["username"],
-            "password": self._config["password"]
+            "username": auth_config["username"],
+            "password": auth_config["password"]
         }
 
     def is_token_valid(self) -> bool:
@@ -98,8 +100,9 @@ class OptiplyAuthenticator:
         
         try:
             # Prepare Basic Auth headers - use client_id:client_secret for Basic Auth
-            client_id = self._config.get("client_id") or self._config.get("clientId")
-            client_secret = self._config["client_secret"]
+            auth_config = self._get_auth_config()
+            client_id = auth_config.get("client_id") or auth_config.get("clientId")
+            client_secret = auth_config["client_secret"]
             import base64
             
             # Match JavaScript btoa() behavior - encode as UTF-8 first
