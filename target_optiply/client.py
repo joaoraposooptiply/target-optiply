@@ -63,19 +63,36 @@ class OptiplySink(HotglueSink):
             # Get the config from target
             full_config = self._target._config
             self.logger.info(f"Full config keys: {list(full_config.keys())}")
+            self.logger.info(f"Full config type: {type(full_config)}")
+            
+            # Debug: Check if importCredentials exists and what it contains
+            if "importCredentials" in full_config:
+                import_creds = full_config["importCredentials"]
+                self.logger.info(f"importCredentials found with keys: {list(import_creds.keys())}")
+                self.logger.info(f"importCredentials client_id: {import_creds.get('client_id', 'NOT_FOUND')}")
+            else:
+                self.logger.warning("importCredentials NOT found in config!")
+            
+            # Debug: Check if apiCredentials exists and what it contains
+            if "apiCredentials" in full_config:
+                api_creds = full_config["apiCredentials"]
+                self.logger.info(f"apiCredentials found with keys: {list(api_creds.keys())}")
+                self.logger.info(f"apiCredentials client_id: {api_creds.get('client_id', 'NOT_FOUND')}")
+            else:
+                self.logger.info("apiCredentials NOT found in config")
             
             # Always use importCredentials section
             if "importCredentials" in full_config:
                 auth_config = full_config["importCredentials"]
-                self.logger.info("Using importCredentials section for authentication")
+                self.logger.info("✅ USING importCredentials section for authentication")
             else:
                 auth_config = full_config
-                self.logger.warning("importCredentials not found, using top-level config")
+                self.logger.warning("❌ importCredentials not found, using top-level config")
             
-            # Log the config keys being used (without sensitive values)
-            self.logger.info(f"Auth config keys: {list(auth_config.keys())}")
-            self.logger.info(f"Auth config client_id: {auth_config.get('client_id', 'NOT_FOUND')}")
-            self.logger.info(f"Auth config client_secret: {auth_config.get('client_secret', 'NOT_FOUND')[:8]}...{auth_config.get('client_secret', 'NOT_FOUND')[-4:] if len(auth_config.get('client_secret', '')) > 12 else '***'}")
+            # Log the final auth config being used
+            self.logger.info(f"Final auth config keys: {list(auth_config.keys())}")
+            self.logger.info(f"Final auth config client_id: {auth_config.get('client_id', 'NOT_FOUND')}")
+            self.logger.info(f"Final auth config client_secret: {auth_config.get('client_secret', 'NOT_FOUND')[:8]}...{auth_config.get('client_secret', 'NOT_FOUND')[-4:] if len(auth_config.get('client_secret', '')) > 12 else '***'}")
             
             # Pass the auth config to the authenticator
             self._authenticator = OptiplyAuthenticator(auth_config)

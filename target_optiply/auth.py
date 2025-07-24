@@ -25,7 +25,7 @@ class OptiplyAuthenticator:
             config: Configuration dictionary containing credentials.
             auth_endpoint: Optional custom auth endpoint.
         """
-        self._config = config["importCredentials"]
+        self._config = config
         self._auth_endpoint = auth_endpoint or os.environ.get(
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token"
@@ -50,7 +50,7 @@ class OptiplyAuthenticator:
             self.update_access_token()
         
         return {
-            "Authorization": f"Bearer {self._access_token}" 
+            "Authorization": f"Bearer {self._access_token}"
         }
 
     @property
