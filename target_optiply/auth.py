@@ -16,40 +16,22 @@ class OptiplyAuthenticator:
 
     def __init__(
         self,
-        target,
+        config: Dict[str, Any],
         auth_endpoint: Optional[str] = None,
     ) -> None:
         """Initialize authenticator.
 
         Args:
-            target: The target instance.
+            config: Configuration dictionary containing credentials.
             auth_endpoint: Optional custom auth endpoint.
         """
-        self.target_name: str = target.name
-        # Get the config from target (like ExactAuthenticator)
-        self._config: Dict[str, Any] = target._config
-        self._auth_headers: Dict[str, Any] = {}
-        self._auth_params: Dict[str, Any] = {}
-        self.logger: logging.Logger = target.logger
+        self._config = config
         self._auth_endpoint = auth_endpoint or os.environ.get(
-            "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
-        ) + "/auth/oauth/token?grant_type=password"
-        
-        # Use existing access_token if provided in config
-        self._access_token = self._config.get("access_token")
+            "optiply_dashboard_url", "https://dashboard.optiply.nl/api"
+        ) + "/auth/oauth/token"
+        self._access_token = None
         self._token_expires_at = None
         self._refresh_token = None
-        
-        # If we have an access_token, assume it's valid for now
-        if self._access_token:
-            # Set expiration to 1 hour from now as a reasonable default
-            self._token_expires_at = datetime.utcnow() + timedelta(hours=1)
-
-    def _get_auth_config(self) -> Dict[str, Any]:
-        """Get the authentication config (from importCredentials if available)."""
-        if "importCredentials" in self._config:
-            return self._config["importCredentials"]
-        return self._config
 
     @property
     def auth_headers(self) -> Dict[str, str]:
@@ -72,10 +54,12 @@ class OptiplyAuthenticator:
         Returns:
             Dictionary containing OAuth request parameters.
         """
-        auth_config = self._get_auth_config()
         return {
-            "username": auth_config["username"],
-            "password": auth_config["password"]
+            "grant_type": "password",
+            "username": self._config["username"],
+            "password": self._config["password"],
+            "client_id": self._config["client_id"],
+            "client_secret": self._config["client_secret"]
         }
 
     def is_token_valid(self) -> bool:
@@ -99,18 +83,11 @@ class OptiplyAuthenticator:
         logger.info("Starting token refresh process")
         
         try:
-            # Prepare Basic Auth headers - use client_id:client_secret for Basic Auth
-            auth_config = self._get_auth_config()
-            client_id = auth_config.get("client_id") or auth_config.get("clientId")
-            client_secret = auth_config["client_secret"]
+            # Prepare Basic Auth headers
+            client_id = self._config["client_id"]
+            client_secret = self._config["client_secret"]
             import base64
-            
-            # Match JavaScript btoa() behavior - encode as UTF-8 first
-            client_id_secret = f"{client_id}:{client_secret}"
-            # Use UTF-8 encoding to match JavaScript btoa()
-            basic_auth = base64.b64encode(client_id_secret.encode('utf-8')).decode('utf-8')
-            
-
+            basic_auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
             
             headers = {
                 "Authorization": f"Basic {basic_auth}",
@@ -118,8 +95,6 @@ class OptiplyAuthenticator:
             }
             
             logger.info(f"Making token request to: {self._auth_endpoint}")
-            logger.info(f"Request body: {self.oauth_request_body}")
-            logger.info(f"Headers: {headers}")
             
             # Make the token request
             response = requests.post(
