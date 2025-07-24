@@ -26,7 +26,15 @@ class TargetOptiply(TargetHotglue):
         state: str = None
     ) -> None:
         self.config_file = config[0]
+        self.logger.info(f"Target config file: {self.config_file}")
         super().__init__(config, parse_env_config, validate_config)
+        
+        # Log the config structure after initialization
+        self.logger.info(f"Target config keys: {list(self._config.keys())}")
+        if "importCredentials" in self._config:
+            self.logger.info("✅ Target config has importCredentials")
+        if "apiCredentials" in self._config:
+            self.logger.info("✅ Target config has apiCredentials")
 
     SINK_TYPES = [
         BaseOptiplySink,
