@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import requests
-from hotglue_sdk.exceptions import FatalAPIError, RetriableAPIError
+from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 from target_hotglue.client import HotglueSink
 from singer_sdk.plugin_base import PluginBase
 

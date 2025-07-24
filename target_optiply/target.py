@@ -41,6 +41,21 @@ class TargetOptiply(TargetHotglue):
     MAX_PARALLELISM = 10
     name = "target-optiply"
 
+    def get_sink_class(self, stream_name: str):
+        """Get sink class for the given stream name."""
+        # Map stream names to sink classes
+        sink_map = {
+            "BuyOrders": BuyOrderSink,
+            "Products": ProductsSink,
+            "Suppliers": SupplierSink,
+            "SupplierProducts": SupplierProductSink,
+            "BuyOrderLines": BuyOrderLineSink,
+            "SellOrders": SellOrderSink,
+            "SellOrderLines": SellOrderLineSink,
+        }
+        
+        return sink_map.get(stream_name, BaseOptiplySink)
+
 
 if __name__ == "__main__":
     TargetOptiply.cli()

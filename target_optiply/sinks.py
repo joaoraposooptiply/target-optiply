@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
-from hotglue_sdk.exceptions import FatalAPIError, RetriableAPIError
+from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 from target_hotglue.client import HotglueSink
 from singer_sdk.plugin_base import PluginBase
 
@@ -231,8 +231,11 @@ class BaseOptiplySink(OptiplySink):
 class ProductsSink(BaseOptiplySink):
     """Products sink class."""
 
-    name = "Products"
     endpoint = "products"
+    
+    @property
+    def name(self) -> str:
+        return "Products"
     field_mappings = {
         "name": "name",
         "skuCode": "skuCode",
@@ -265,8 +268,11 @@ class ProductsSink(BaseOptiplySink):
 class SupplierSink(BaseOptiplySink):
     """Optiply target sink class for suppliers."""
 
-    name = "Suppliers"
     endpoint = "suppliers"
+    
+    @property
+    def name(self) -> str:
+        return "Suppliers"
     field_mappings = {
         "name": "name",
         "emails": "emails",
@@ -299,8 +305,11 @@ class SupplierSink(BaseOptiplySink):
 class SupplierProductSink(BaseOptiplySink):
     """Optiply target sink class for supplier products."""
 
-    name = "SupplierProducts"
     endpoint = "supplierProducts"
+    
+    @property
+    def name(self) -> str:
+        return "SupplierProducts"
     field_mappings = {
         "name": "name",
         "skuCode": "skuCode",
@@ -333,8 +342,11 @@ class SupplierProductSink(BaseOptiplySink):
 class BuyOrderSink(BaseOptiplySink):
     """Optiply target sink class for buy orders."""
 
-    name = "BuyOrders"
     endpoint = "buyOrders"
+    
+    @property
+    def name(self) -> str:
+        return "BuyOrders"
     field_mappings = {
         "placed": "placed",
         "completed": "completed",
@@ -385,8 +397,11 @@ class BuyOrderSink(BaseOptiplySink):
 class BuyOrderLineSink(BaseOptiplySink):
     """Optiply target sink class for buy order lines."""
 
-    name = "BuyOrderLines"
     endpoint = "buyOrderLines"
+    
+    @property
+    def name(self) -> str:
+        return "BuyOrderLines"
     field_mappings = {
         "quantity": "quantity",
         "subtotalValue": "subtotalValue",
@@ -407,8 +422,11 @@ class BuyOrderLineSink(BaseOptiplySink):
 class SellOrderSink(BaseOptiplySink):
     """Optiply target sink class for sell orders."""
 
-    name = "SellOrders"
     endpoint = "sellOrders"
+    
+    @property
+    def name(self) -> str:
+        return "SellOrders"
     field_mappings = {
         "placed": "placed",
         "totalValue": "totalValue"
@@ -453,8 +471,11 @@ class SellOrderSink(BaseOptiplySink):
 class SellOrderLineSink(BaseOptiplySink):
     """Optiply target sink class for sell order lines."""
 
-    name = "SellOrderLines"
     endpoint = "sellOrderLines"
+    
+    @property
+    def name(self) -> str:
+        return "SellOrderLines"
     field_mappings = {
         "quantity": "quantity",
         "subtotalValue": "subtotalValue",
