@@ -19,8 +19,10 @@ class OptiplyAuthenticator:
         config: Dict[str, Any],
         auth_endpoint: Optional[str] = None,
     ) -> None:
+        # Debug logging to see what config we're receiving
+        logger.info(f"Received config: {config}")
+        
         # Use importCredentials if available, otherwise fall back to top-level config
-      
         self._config = config["importCredentials"]
             
         self._auth_endpoint = auth_endpoint or os.environ.get(
