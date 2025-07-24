@@ -19,19 +19,18 @@ class OptiplyAuthenticator:
         config: Dict[str, Any],
         auth_endpoint: Optional[str] = None,
     ) -> None:
-        """Initialize authenticator.
-
-        Args:
-            config: Configuration dictionary containing credentials.
-            auth_endpoint: Optional custom auth endpoint.
-        """
-        self._config = config
+        # Use importCredentials if available, otherwise fall back to top-level config
+        if "importCredentials" in config:
+            self._config = config["importCredentials"]
+        else:
+            self._config = config
+            
         self._auth_endpoint = auth_endpoint or os.environ.get(
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token?grant_type=password"
         
         # Use existing access_token if provided in config
-        self._access_token = config.get("access_token")
+        self._access_token = self._config.get("access_token")
         self._token_expires_at = None
         self._refresh_token = None
         
