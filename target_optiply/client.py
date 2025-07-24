@@ -60,18 +60,22 @@ class OptiplySink(HotglueSink):
             The authenticator instance.
         """
         if self._authenticator is None:
-            # Get the config from target and use importCredentials if available
+            # Get the config from target
             full_config = self._target._config
+            self.logger.info(f"Full config keys: {list(full_config.keys())}")
+            
+            # Always use importCredentials section
             if "importCredentials" in full_config:
                 auth_config = full_config["importCredentials"]
                 self.logger.info("Using importCredentials section for authentication")
             else:
                 auth_config = full_config
-                self.logger.info("Using top-level config for authentication")
+                self.logger.warning("importCredentials not found, using top-level config")
             
             # Log the config keys being used (without sensitive values)
             self.logger.info(f"Auth config keys: {list(auth_config.keys())}")
-            self.logger.info(f"Full config keys: {list(full_config.keys())}")
+            self.logger.info(f"Auth config client_id: {auth_config.get('client_id', 'NOT_FOUND')}")
+            self.logger.info(f"Auth config client_secret: {auth_config.get('client_secret', 'NOT_FOUND')[:8]}...{auth_config.get('client_secret', 'NOT_FOUND')[-4:] if len(auth_config.get('client_secret', '')) > 12 else '***'}")
             
             # Pass the auth config to the authenticator
             self._authenticator = OptiplyAuthenticator(auth_config)
