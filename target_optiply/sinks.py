@@ -77,8 +77,14 @@ class BaseOptiplySink(OptiplySink):
             if http_method == "POST":
                 mandatory_fields = self.get_mandatory_fields()
                 missing_fields = []
+                
+                # Get the actual record data - it might be nested in data.attributes
+                actual_record = record
+                if 'data' in record and 'attributes' in record['data']:
+                    actual_record = record['data']['attributes']
+                
                 for field in mandatory_fields:
-                    if field not in record or record[field] is None or (isinstance(record[field], str) and not record[field].strip()):
+                    if field not in actual_record or actual_record[field] is None or (isinstance(actual_record[field], str) and not actual_record[field].strip()):
                         missing_fields.append(field)
                 if missing_fields:
                     error_msg = f"Record skipped due to missing mandatory fields: {', '.join(missing_fields)}"
