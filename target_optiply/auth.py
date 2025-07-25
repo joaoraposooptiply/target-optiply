@@ -62,6 +62,12 @@ class OptiplyAuthenticator:
             Dictionary containing OAuth request parameters.
         """
         auth_config = self._get_auth_config()
+        
+        # Log the credentials being used (masked)
+        logger.info(f"Auth config client_id: {auth_config.get('client_id', 'NOT_FOUND')}")
+        logger.info(f"Auth config username: {auth_config.get('username', 'NOT_FOUND')}")
+        logger.info(f"Auth config password: {auth_config.get('password', 'NOT_FOUND')[:4]}...{auth_config.get('password', 'NOT_FOUND')[-2:] if len(auth_config.get('password', '')) > 6 else '***'}")
+        
         return {
             "grant_type": "password",
             "username": auth_config["username"],
@@ -142,12 +148,20 @@ class OptiplyAuthenticator:
         """Get the authentication config from the appropriate section."""
         # Check for nested credential sections first
         if "importCredentials" in self._config:
-            return self._config["importCredentials"]
+            auth_config = self._config["importCredentials"]
+            logger.info("✅ Using importCredentials section")
+            logger.info(f"importCredentials keys: {list(auth_config.keys())}")
+            return auth_config
         elif "apiCredentials" in self._config:
-            return self._config["apiCredentials"]
+            auth_config = self._config["apiCredentials"]
+            logger.info("✅ Using apiCredentials section")
+            logger.info(f"apiCredentials keys: {list(auth_config.keys())}")
+            return auth_config
         else:
             # Create nested structure from flat config (for deployed environment)
-            return {
+            logger.info("✅ Using flat config, creating nested structure")
+            logger.info(f"Flat config keys: {list(self._config.keys())}")
+            auth_config = {
                 "client_id": self._config.get("client_id"),
                 "client_secret": self._config.get("client_secret"),
                 "username": self._config.get("username"),
@@ -155,3 +169,5 @@ class OptiplyAuthenticator:
                 "access_token": self._config.get("access_token"),
                 "coupling_id": self._config.get("coupling_id") or self._config.get("couplingId")
             }
+            logger.info(f"Created auth config keys: {list(auth_config.keys())}")
+            return auth_config
