@@ -147,6 +147,7 @@ class OptiplyAuthenticator:
     def _get_auth_config(self) -> Dict[str, Any]:
         """Get the authentication config from the appropriate section."""
         # Check for nested credential sections first
+        logger.info(self._config)
         if "importCredentials" in self._config:
             auth_config = self._config["importCredentials"]
             logger.info("✅ Using importCredentials section")
