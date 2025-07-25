@@ -30,38 +30,6 @@ class OptiplyAuthenticator:
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token"
         
-        # Log environment variables that might be used
-        logger.info("🔍 Checking environment variables:")
-        logger.info(f"optiply_dashboard_url: {os.environ.get('optiply_dashboard_url', 'NOT_SET')}")
-        logger.info(f"OPTIPLY_CLIENT_ID: {os.environ.get('OPTIPLY_CLIENT_ID', 'NOT_SET')}")
-        logger.info(f"OPTIPLY_CLIENT_SECRET: {os.environ.get('OPTIPLY_CLIENT_SECRET', 'NOT_SET')}")
-        logger.info(f"OPTIPLY_USERNAME: {os.environ.get('OPTIPLY_USERNAME', 'NOT_SET')}")
-        logger.info(f"OPTIPLY_PASSWORD: {os.environ.get('OPTIPLY_PASSWORD', 'NOT_SET')}")
-        
-        # Check if .env file exists
-        import pathlib
-        env_file = pathlib.Path(".env")
-        if env_file.exists():
-            logger.info("✅ .env file found in working directory")
-            try:
-                with open(env_file, 'r') as f:
-                    env_contents = f.read()
-                logger.info("📄 .env file contents:")
-                # Log each line (mask sensitive values)
-                for line in env_contents.split('\n'):
-                    if line.strip() and not line.startswith('#'):
-                        if 'PASSWORD' in line or 'SECRET' in line or 'TOKEN' in line:
-                            # Mask sensitive values
-                            key, value = line.split('=', 1) if '=' in line else (line, '')
-                            masked_value = value[:4] + '...' + value[-2:] if len(value) > 6 else '***'
-                            logger.info(f"  {key}={masked_value}")
-                        else:
-                            logger.info(f"  {line}")
-            except Exception as e:
-                logger.error(f"❌ Error reading .env file: {e}")
-        else:
-            logger.info("❌ .env file not found in working directory")
-        
         # Use existing access_token if provided in config
         self._access_token = self._config.get("access_token")
         self._token_expires_at = None
@@ -94,12 +62,6 @@ class OptiplyAuthenticator:
             Dictionary containing OAuth request parameters.
         """
         auth_config = self._get_auth_config()
-        
-        # Log the credentials being used (masked)
-        logger.info(f"Auth config client_id: {auth_config.get('client_id', 'NOT_FOUND')}")
-        logger.info(f"Auth config username: {auth_config.get('username', 'NOT_FOUND')}")
-        logger.info(f"Auth config password: {auth_config.get('password', 'NOT_FOUND')[:4]}...{auth_config.get('password', 'NOT_FOUND')[-2:] if len(auth_config.get('password', '')) > 6 else '***'}")
-        
         return {
             "grant_type": "password",
             "username": auth_config["username"],
@@ -141,15 +103,7 @@ class OptiplyAuthenticator:
                 "Content-Type": "application/x-www-form-urlencoded"
             }
             
-            # Log the auth request details (mask sensitive data)
             logger.info(f"Making token request to: {self._auth_endpoint}")
-            logger.info(f"Client ID: {client_id}")
-            logger.info(f"Client Secret: {client_secret[:8]}...{client_secret[-4:] if len(client_secret) > 12 else '***'}")
-            logger.info(f"Username: {self._config['username']}")
-            logger.info(f"Password: {self._config['password'][:4]}...{self._config['password'][-2:] if len(self._config['password']) > 6 else '***'}")
-            logger.info(f"Basic Auth Header: Basic {basic_auth[:20]}...{basic_auth[-10:] if len(basic_auth) > 30 else '***'}")
-            logger.info(f"Request Headers: {headers}")
-            logger.info(f"Request Body: {self.oauth_request_body}")
             
             # Make the token request
             response = requests.post(
@@ -159,15 +113,10 @@ class OptiplyAuthenticator:
                 timeout=30
             )
             
-            logger.info(f"Auth Response Status: {response.status_code}")
-            logger.info(f"Auth Response Headers: {dict(response.headers)}")
-            
             if response.status_code != 200:
-                logger.error(f"Auth Response Body: {response.text}")
                 raise Exception(f"Token request failed with status {response.status_code}: {response.text}")
             
             token_data = response.json()
-            logger.info(f"Auth Response Body: {token_data}")
             
             # Update token information
             self._access_token = token_data["access_token"]
@@ -178,7 +127,6 @@ class OptiplyAuthenticator:
             self._token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
             
             logger.info("Successfully updated access token")
-            logger.info(f"Token expires at: {self._token_expires_at}")
             
         except Exception as e:
             logger.error(f"Failed to update access token: {str(e)}")
@@ -194,17 +142,16 @@ class OptiplyAuthenticator:
         """Get the authentication config from the appropriate section."""
         # Check for nested credential sections first
         if "importCredentials" in self._config:
-            auth_config = self._config["importCredentials"]
-            logger.info("✅ Using importCredentials section")
-            logger.info(f"importCredentials keys: {list(auth_config.keys())}")
-            return auth_config
+            return self._config["importCredentials"]
         elif "apiCredentials" in self._config:
-            auth_config = self._config["apiCredentials"]
-            logger.info("✅ Using apiCredentials section")
-            logger.info(f"apiCredentials keys: {list(auth_config.keys())}")
-            return auth_config
+            return self._config["apiCredentials"]
         else:
-            # Use top-level config (for deployed environment)
-            logger.info("✅ Using top-level config")
-            logger.info(f"Top-level config keys: {list(self._config.keys())}")
-            return self._config
+            # Create nested structure from flat config (for deployed environment)
+            return {
+                "client_id": self._config.get("client_id"),
+                "client_secret": self._config.get("client_secret"),
+                "username": self._config.get("username"),
+                "password": self._config.get("password"),
+                "access_token": self._config.get("access_token"),
+                "coupling_id": self._config.get("coupling_id") or self._config.get("couplingId")
+            }
