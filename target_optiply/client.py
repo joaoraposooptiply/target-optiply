@@ -227,7 +227,8 @@ class OptiplySink(HotglueSink):
                              (requests.exceptions.RequestException, ConnectionResetError),
                              max_tries=3, max_time=30)
         def _make_request():
-            url = f"{self.base_url}/{endpoint}"
+            # Use the url() method to properly include accountId and couplingId parameters
+            url = self.url(endpoint)
             request_headers = self.http_headers().copy()
             if headers:
                 request_headers.update(headers)
