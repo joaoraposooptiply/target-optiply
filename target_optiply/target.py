@@ -91,6 +91,84 @@ class TargetOptiply(TargetHotglue):
         
         return original_state
 
+    def _get_export_summary(self) -> dict:
+        """Override to provide simplified export summary."""
+        # Get the original export summary from parent
+        original_summary = super()._get_export_summary()
+        
+        # Simplify the export details to only show counts
+        if "exportDetails" in original_summary:
+            simplified_details = {}
+            for stream_name, records in original_summary["exportDetails"].items():
+                if isinstance(records, list):
+                    # Count successes and failures
+                    success_count = sum(1 for record in records if record.get("success", False))
+                    fail_count = len(records) - success_count
+                    
+                    simplified_details[stream_name] = {
+                        "total": len(records),
+                        "success": success_count,
+                        "failed": fail_count
+                    }
+                else:
+                    # Keep as is if not a list
+                    simplified_details[stream_name] = records
+            
+            original_summary["exportDetails"] = simplified_details
+        
+        return original_summary
+
+    def _get_export_details(self) -> dict:
+        """Override to provide simplified export details."""
+        # Get the original export details from parent
+        original_details = super()._get_export_details()
+        
+        # Simplify the export details to only show counts
+        simplified_details = {}
+        for stream_name, records in original_details.items():
+            if isinstance(records, list):
+                # Count successes and failures
+                success_count = sum(1 for record in records if record.get("success", False))
+                fail_count = len(records) - success_count
+                
+                simplified_details[stream_name] = {
+                    "total": len(records),
+                    "success": success_count,
+                    "failed": fail_count
+                }
+            else:
+                # Keep as is if not a list
+                simplified_details[stream_name] = records
+        
+        return simplified_details
+
+    def _get_metrics(self) -> dict:
+        """Override to provide simplified metrics."""
+        # Get the original metrics from parent
+        original_metrics = super()._get_metrics()
+        
+        # Simplify the export details to only show counts
+        if "exportDetails" in original_metrics:
+            simplified_details = {}
+            for stream_name, records in original_metrics["exportDetails"].items():
+                if isinstance(records, list):
+                    # Count successes and failures
+                    success_count = sum(1 for record in records if record.get("success", False))
+                    fail_count = len(records) - success_count
+                    
+                    simplified_details[stream_name] = {
+                        "total": len(records),
+                        "success": success_count,
+                        "failed": fail_count
+                    }
+                else:
+                    # Keep as is if not a list
+                    simplified_details[stream_name] = records
+            
+            original_metrics["exportDetails"] = simplified_details
+        
+        return original_metrics
+
 
 if __name__ == "__main__":
     TargetOptiply.cli()
