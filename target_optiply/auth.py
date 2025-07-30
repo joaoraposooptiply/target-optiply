@@ -26,6 +26,7 @@ class OptiplyAuthenticator:
             auth_endpoint: Optional custom auth endpoint.
         """
         self._config: Dict[str, Any] = target._config
+        self._target = target  # Store reference to target for config file access
         self._auth_endpoint = auth_endpoint or os.environ.get(
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token"
@@ -129,6 +130,9 @@ class OptiplyAuthenticator:
             
             logger.info("Successfully updated access token")
             
+            # Save the new token to the config file
+            self._save_token_to_config()
+            
         except Exception as e:
             logger.error(f"Failed to update access token: {str(e)}")
             raise
@@ -149,3 +153,31 @@ class OptiplyAuthenticator:
             "access_token": self._config.get("access_token"),
             "coupling_id": self._config.get("coupling_id") or self._config.get("couplingId")
         }
+
+    def _save_token_to_config(self) -> None:
+        """Save the current access token back to the config file."""
+        try:
+            if not hasattr(self._target, 'config_file') or not self._target.config_file:
+                logger.warning("No config file path available, skipping token persistence")
+                return
+            
+            config_file_path = self._target.config_file
+            
+            # Read the current config file
+            with open(config_file_path, 'r') as f:
+                config_data = json.load(f)
+            
+            # Update the access_token at top level
+            config_data["access_token"] = self._access_token
+            logger.info("Updated access_token in config")
+            
+            # Write the updated config back to file
+            with open(config_file_path, 'w') as f:
+                json.dump(config_data, f, indent=2)
+            
+            logger.info(f"Successfully saved new access token to config file: {config_file_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save token to config file: {str(e)}")
+            # Don't raise the exception - token refresh was successful, 
+            # we just couldn't persist it
