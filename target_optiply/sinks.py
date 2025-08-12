@@ -340,10 +340,12 @@ class SupplierProductSink(BaseOptiplySink):
         """Add any additional attributes with proper data type conversion."""
         super()._add_additional_attributes(record, attributes)
         
-        # Convert price to float
+        # Convert price to float and round to 2 decimal places
         if "price" in attributes and attributes["price"] is not None:
             try:
-                attributes["price"] = float(attributes["price"])
+                price = float(attributes["price"])
+                # Round to 2 decimal places as per API spec
+                attributes["price"] = round(price, 2)
             except (ValueError, TypeError):
                 self.logger.warning(f"Could not convert price to float: {attributes['price']}")
                 attributes.pop("price", None)
@@ -362,8 +364,8 @@ class SupplierProductSink(BaseOptiplySink):
                         self.logger.warning(f"Could not convert {field} to boolean: {value}")
                         attributes.pop(field, None)
         
-        # Convert integer fields
-        integer_fields = ["productId", "supplierId", "minimumPurchaseQuantity", "lotSize", "deliveryTime", "freeStock", "weight", "volume"]
+        # Convert integer fields with validation
+        integer_fields = ["productId", "supplierId", "deliveryTime", "freeStock"]
         for field in integer_fields:
             if field in attributes and attributes[field] is not None:
                 try:
@@ -371,6 +373,49 @@ class SupplierProductSink(BaseOptiplySink):
                 except (ValueError, TypeError):
                     self.logger.warning(f"Could not convert {field} to integer: {attributes[field]}")
                     attributes.pop(field, None)
+        
+        # Convert and validate minimumPurchaseQuantity and lotSize (must be >= 1)
+        for field in ["minimumPurchaseQuantity", "lotSize"]:
+            if field in attributes and attributes[field] is not None:
+                try:
+                    value = int(float(attributes[field]))
+                    if value >= 1:
+                        attributes[field] = value
+                    else:
+                        self.logger.warning(f"{field} must be >= 1, got: {value}")
+                        attributes.pop(field, None)
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Could not convert {field} to integer: {attributes[field]}")
+                    attributes.pop(field, None)
+        
+        # Convert double fields (weight, volume) and round to 2 decimal places
+        double_fields = ["weight", "volume"]
+        for field in double_fields:
+            if field in attributes and attributes[field] is not None:
+                try:
+                    value = float(attributes[field])
+                    # Round to 2 decimal places as per API spec
+                    attributes[field] = round(value, 2)
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Could not convert {field} to float: {attributes[field]}")
+                    attributes.pop(field, None)
+        
+        # Validate and normalize status field (should be lowercase per API spec)
+        if "status" in attributes and attributes["status"] is not None:
+            status = attributes["status"].lower()
+            if status in ["enabled", "active", "true", "1"]:
+                attributes["status"] = "enabled"
+            elif status in ["disabled", "inactive", "false", "0"]:
+                attributes["status"] = "disabled"
+            else:
+                self.logger.warning(f"Invalid status value: {attributes['status']}. Must be 'enabled' or 'disabled'")
+                attributes["status"] = "enabled"  # Default to enabled
+        
+        # Remove any None values that might cause issues
+        attributes = {k: v for k, v in attributes.items() if v is not None}
+        
+        # Log the final attributes for debugging
+        self.logger.info(f"Final attributes for {self.stream_name}: {attributes}")
 
     def get_mandatory_fields(self) -> List[str]:
         """Get the list of mandatory fields for this sink.
