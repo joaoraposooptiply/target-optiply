@@ -31,10 +31,18 @@ class TargetOptiply(TargetHotglue):
         
         # Log the config structure after initialization
         self.logger.info(f"Target config keys: {list(self._config.keys())}")
-        if "importCredentials" in self._config:
-            self.logger.info("✅ Target config has importCredentials")
-        if "apiCredentials" in self._config:
-            self.logger.info("✅ Target config has apiCredentials")
+        
+        # Log the token being used
+        if "token" in self._config:
+            token = self._config["token"]
+            # Log first few characters of token for security
+            if token and len(token) > 8:
+                masked_token = token[:4] + "*" * (len(token) - 8) + token[-4:]
+                self.logger.info(f"Using token: {masked_token}")
+            else:
+                self.logger.info(f"Using token: {token}")
+        else:
+            self.logger.warning("No token found in config")
 
     SINK_TYPES = [
         BaseOptiplySink,
