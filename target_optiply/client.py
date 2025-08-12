@@ -65,39 +65,15 @@ class OptiplySink(HotglueSink):
             self.logger.info(f"Full config keys: {list(full_config.keys())}")
             self.logger.info(f"Full config type: {type(full_config)}")
             
-            # Debug: Check if importCredentials exists and what it contains
-            if "importCredentials" in full_config:
-                import_creds = full_config["importCredentials"]
-                self.logger.info(f"importCredentials found with keys: {list(import_creds.keys())}")
-                self.logger.info(f"importCredentials client_id: {import_creds.get('client_id', 'NOT_FOUND')}")
-            else:
-                self.logger.warning("importCredentials NOT found in config!")
-            
-            # Debug: Check if apiCredentials exists and what it contains
-            if "apiCredentials" in full_config:
-                api_creds = full_config["apiCredentials"]
-                self.logger.info(f"apiCredentials found with keys: {list(api_creds.keys())}")
-                self.logger.info(f"apiCredentials client_id: {api_creds.get('client_id', 'NOT_FOUND')}")
-            else:
-                self.logger.info("apiCredentials NOT found in config")
-            
-            # Extract credentials from the appropriate section
-            if "importCredentials" in full_config:
-                auth_config = full_config["importCredentials"]
-                self.logger.info("✅ USING importCredentials section for authentication")
-            elif "apiCredentials" in full_config:
-                auth_config = full_config["apiCredentials"]
-                self.logger.info("✅ USING apiCredentials section for authentication")
-            else:
-                # Use top-level config (for deployed environment)
-                auth_config = {
-                    "client_id": full_config.get("client_id"),
-                    "client_secret": full_config.get("client_secret"),
-                    "username": full_config.get("username"),
-                    "password": full_config.get("password"),
-                    "access_token": full_config.get("access_token")
-                }
-                self.logger.info("✅ USING top-level config for authentication")
+            # Use top-level config for authentication
+            auth_config = {
+                "client_id": full_config.get("client_id"),
+                "client_secret": full_config.get("client_secret"),
+                "username": full_config.get("username"),
+                "password": full_config.get("password"),
+                "access_token": full_config.get("access_token")
+            }
+            self.logger.info("✅ USING top-level config for authentication")
             
             # Log the final auth config being used
             self.logger.info(f"Final auth config keys: {list(auth_config.keys())}")
@@ -252,4 +228,27 @@ class OptiplySink(HotglueSink):
             
             return response
         
-        return _make_request()
+        # Make the initial request
+        response = _make_request()
+        
+        # Handle 401 errors by refreshing token and retrying
+        if response.status_code == 401:
+            logger.info("Received 401 error in request_api, attempting to refresh token and retry")
+            try:
+                # Handle 401 response by refreshing token
+                self.authenticator.handle_401_response()
+                
+                # Retry the request with new token
+                response = _make_request()
+                logger.info("Successfully retried request after token refresh")
+                
+                # If we still get 401 after refresh, it's a fatal error
+                if response.status_code == 401:
+                    logger.error("Still getting 401 after token refresh - authentication failed")
+                    raise FatalAPIError(f"Authentication failed after token refresh: {response.text}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to refresh token and retry: {str(e)}")
+                raise
+        
+        return response
