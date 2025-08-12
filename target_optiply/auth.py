@@ -32,7 +32,10 @@ class OptiplyAuthenticator:
         ) + "/auth/oauth/token"
         
         # Use access_token from config only
+        logger.info(f"Auth module config keys: {list(self._config.keys())}")
+        logger.info(f"Auth module looking for access_token in config...")
         self._access_token = self._config.get("access_token")
+        logger.info(f"Auth module access_token value: {self._access_token[:10] + '...' if self._access_token else 'None'}")
         self._token_expires_at = None
         self._refresh_token = None
         

@@ -32,7 +32,19 @@ class TargetOptiply(TargetHotglue):
         # Log the config structure after initialization
         self.logger.info(f"Target config keys: {list(self._config.keys())}")
         
-        # Log the token being used
+        # Log the access_token being used
+        if "access_token" in self._config:
+            access_token = self._config["access_token"]
+            # Log first few characters of token for security
+            if access_token and len(access_token) > 8:
+                masked_token = access_token[:4] + "*" * (len(access_token) - 8) + access_token[-4:]
+                self.logger.info(f"Using access_token: {masked_token}")
+            else:
+                self.logger.info(f"Using access_token: {access_token}")
+        else:
+            self.logger.warning("No access_token found in config")
+        
+        # Also check for "token" key for backward compatibility
         if "token" in self._config:
             token = self._config["token"]
             # Log first few characters of token for security
@@ -42,7 +54,7 @@ class TargetOptiply(TargetHotglue):
             else:
                 self.logger.info(f"Using token: {token}")
         else:
-            self.logger.warning("No token found in config")
+            self.logger.info("No token key found in config (using access_token instead)")
 
     SINK_TYPES = [
         BaseOptiplySink,
