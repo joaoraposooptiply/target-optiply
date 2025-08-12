@@ -336,6 +336,42 @@ class SupplierProductSink(BaseOptiplySink):
         "volume": "volume"
     }
 
+    def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
+        """Add any additional attributes with proper data type conversion."""
+        super()._add_additional_attributes(record, attributes)
+        
+        # Convert price to float
+        if "price" in attributes and attributes["price"] is not None:
+            try:
+                attributes["price"] = float(attributes["price"])
+            except (ValueError, TypeError):
+                self.logger.warning(f"Could not convert price to float: {attributes['price']}")
+                attributes.pop("price", None)
+        
+        # Convert boolean fields
+        boolean_fields = ["availability", "preferred"]
+        for field in boolean_fields:
+            if field in attributes and attributes[field] is not None:
+                value = attributes[field]
+                if isinstance(value, str):
+                    if value.lower() in ['true', '1', 'yes']:
+                        attributes[field] = True
+                    elif value.lower() in ['false', '0', 'no']:
+                        attributes[field] = False
+                    else:
+                        self.logger.warning(f"Could not convert {field} to boolean: {value}")
+                        attributes.pop(field, None)
+        
+        # Convert integer fields
+        integer_fields = ["productId", "supplierId", "minimumPurchaseQuantity", "lotSize", "deliveryTime", "freeStock", "weight", "volume"]
+        for field in integer_fields:
+            if field in attributes and attributes[field] is not None:
+                try:
+                    attributes[field] = int(float(attributes[field]))
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Could not convert {field} to integer: {attributes[field]}")
+                    attributes.pop(field, None)
+
     def get_mandatory_fields(self) -> List[str]:
         """Get the list of mandatory fields for this sink.
 
