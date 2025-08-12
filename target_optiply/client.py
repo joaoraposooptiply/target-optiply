@@ -169,8 +169,8 @@ class OptiplySink(HotglueSink):
         if response.status_code == 401:
             logger.info("Received 401 error, attempting to refresh token and retry")
             try:
-                # Force token refresh using the authenticator method
-                self._authenticator.force_refresh()
+                # Handle 401 response by refreshing token
+                self.authenticator.handle_401_response()
                 
                 # Get fresh headers with new token
                 headers = self.http_headers()

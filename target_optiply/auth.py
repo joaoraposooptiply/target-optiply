@@ -31,15 +31,21 @@ class OptiplyAuthenticator:
             "optiply_dashboard_url", "https://dashboard.acceptance.optiply.com/api"
         ) + "/auth/oauth/token"
         
-        # Use existing access_token if provided in config
+        # Use access_token from config only
         self._access_token = self._config.get("access_token")
         self._token_expires_at = None
         self._refresh_token = None
         
-        # If we have an access_token, assume it's valid for now
+        # Log the token being used
         if self._access_token:
-            # Set expiration to 1 hour from now as a reasonable default
-            self._token_expires_at = datetime.utcnow() + timedelta(hours=1)
+            # Log first few characters of token for security
+            if len(self._access_token) > 8:
+                masked_token = self._access_token[:4] + "*" * (len(self._access_token) - 8) + self._access_token[-4:]
+                logger.info(f"Using config access token: {masked_token}")
+            else:
+                logger.info(f"Using config access token: {self._access_token}")
+        else:
+            logger.warning("No access token found in config")
 
     @property
     def auth_headers(self) -> Dict[str, str]:
@@ -48,8 +54,13 @@ class OptiplyAuthenticator:
         Returns:
             Dictionary containing Authorization header with Bearer token.
         """
-        if not self.is_token_valid():
-            self.update_access_token()
+        if not self._access_token:
+            raise Exception("No access token found in config")
+        
+        # Log which token is being used for the request
+        if len(self._access_token) > 8:
+            masked_token = self._access_token[:4] + "*" * (len(self._access_token) - 8) + self._access_token[-4:]
+            logger.debug(f"Using current access token for request: {masked_token}")
         
         return {
             "Authorization": f"Bearer {self._access_token}"
@@ -72,21 +83,7 @@ class OptiplyAuthenticator:
             "client_secret": auth_config["client_secret"]
         }
 
-    def is_token_valid(self) -> bool:
-        """Check if the current access token is still valid.
 
-        Returns:
-            True if token is valid, False otherwise.
-        """
-        if not self._access_token:
-            return False
-        
-        if not self._token_expires_at:
-            return False
-        
-        # Check if token expires within the next 2 minutes
-        now = datetime.utcnow()
-        return self._token_expires_at > (now + timedelta(minutes=2))
 
     def update_access_token(self) -> None:
         """Update the access token by making a request to the auth endpoint."""
@@ -124,11 +121,18 @@ class OptiplyAuthenticator:
             self._access_token = token_data["access_token"]
             self._refresh_token = token_data.get("refresh_token")
             
+            # Log the new token being used
+            if len(self._access_token) > 8:
+                masked_token = self._access_token[:4] + "*" * (len(self._access_token) - 8) + self._access_token[-4:]
+                logger.info(f"Successfully obtained new access token: {masked_token}")
+            else:
+                logger.info(f"Successfully obtained new access token: {self._access_token}")
+            
             # Calculate expiration time
             expires_in = token_data.get("expires_in", 3600)  # Default to 1 hour
             self._token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
             
-            logger.info("Successfully updated access token")
+            logger.info(f"Token expires in {expires_in} seconds")
             
             # Save the new token to the config file
             self._save_token_to_config()
@@ -137,11 +141,13 @@ class OptiplyAuthenticator:
             logger.error(f"Failed to update access token: {str(e)}")
             raise
 
-    def force_refresh(self) -> None:
-        """Force a token refresh regardless of current token validity."""
-        self._access_token = None
-        self._token_expires_at = None
+
+
+    def handle_401_response(self) -> None:
+        """Handle 401 Unauthorized response by refreshing the token."""
+        logger.info("Received 401 Unauthorized response, refreshing token...")
         self.update_access_token()
+        logger.info("Token refreshed after 401 response")
 
     def _get_auth_config(self) -> Dict[str, Any]:
         """Get the authentication config from top-level config."""
