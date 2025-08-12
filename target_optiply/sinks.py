@@ -67,11 +67,18 @@ class BaseOptiplySink(OptiplySink):
         state_updates = {}
         
         try:
+            # Get the ID from the preprocessed record structure
+            record_id = None
+            if 'data' in record and 'id' in record['data']:
+                record_id = record['data']['id']
+            elif 'id' in record:
+                record_id = record['id']
+            
             # Set http_method based on presence of id field
-            http_method = "PATCH" if "id" in record else "POST"
+            http_method = "PATCH" if record_id else "POST"
             
             # Log record processing
-            self.logger.info(f"Processing record for {self.stream_name} (ID: {record.get('id')})")
+            self.logger.info(f"Processing record for {self.stream_name} (ID: {record_id})")
 
             # For POST requests, check mandatory fields
             if http_method == "POST":
@@ -92,8 +99,8 @@ class BaseOptiplySink(OptiplySink):
                     return None, False, state_updates
 
             # Get the URL for the request
-            if record.get('id'):
-                endpoint = f"{self.endpoint}/{record.get('id')}"
+            if record_id:
+                endpoint = f"{self.endpoint}/{record_id}"
             else:
                 endpoint = self.endpoint
                 
@@ -111,7 +118,7 @@ class BaseOptiplySink(OptiplySink):
 
             # Handle response
             if response.status_code == 404:
-                error_msg = f"Record not found (404): {record.get('id')}"
+                error_msg = f"Record not found (404): {record_id}"
                 self.logger.warning(error_msg)
                 return None, False, state_updates
             elif response.status_code >= 400:
@@ -122,12 +129,12 @@ class BaseOptiplySink(OptiplySink):
             # Parse response to get ID
             response_data = response.json()
             if "data" in response_data and "id" in response_data["data"]:
-                record_id = response_data["data"]["id"]
+                response_record_id = response_data["data"]["id"]
             else:
-                record_id = record.get("id", "unknown")
+                response_record_id = record_id or "unknown"
 
-            self.logger.info(f"{self.stream_name} processed with id: {record_id}")
-            return record_id, True, state_updates
+            self.logger.info(f"{self.stream_name} processed with id: {response_record_id}")
+            return response_record_id, True, state_updates
 
         except Exception as e:
             error_msg = f"Error processing record: {str(e)}"
