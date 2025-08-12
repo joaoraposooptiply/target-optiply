@@ -225,6 +225,11 @@ class OptiplySink(HotglueSink):
             self.logger.info(f"Response status: {response.status_code}")
             if response.status_code >= 400:
                 self.logger.error(f"API Error: {response.status_code} - {response.text}")
+                # Log the request payload for server errors (500s)
+                if response.status_code >= 500:
+                    self.logger.error(f"Request payload that caused 500 error: {request_data}")
+                    self.logger.error(f"Request headers: {request_headers}")
+                    self.logger.error(f"Request URL: {url}")
             
             return response
         
