@@ -108,6 +108,17 @@ The target supports the following Optiply entity types:
 - **Mandatory Fields**: `subtotalValue`, `sellOrderId`, `productId`, `quantity`
 - **Supported Fields**: `quantity`, `subtotalValue`, `productId`, `sellOrderId`
 
+### Promotions
+- **Endpoint**: `/promotions`
+- **Mandatory Fields**: `name`, `startDate`, `endDate`, `entireShop`, `enabled`, `upliftType`
+- **Supported Fields**: `name`, `startDate`, `endDate`, `entireShop`, `enabled`, `upliftType`, `upliftIncrease`
+
+### Promotion Products
+- **Endpoint**: `/promotionProducts`
+- **Mandatory Fields**: `productId`, `promotionId`
+- **Supported Fields**: `productId`, `promotionId`, `Remote_promotionId`, `specificUpliftType`, `specificUpliftIncrease`
+- **Two-file import contract**: send `Promotions` before `PromotionProducts` in the same target run. `PromotionProducts.Remote_promotionId` must match the source `externalId` or `inputId` from the corresponding `Promotions` row so the target can resolve the Optiply promotion ID from the in-memory run cache.
+
 ## Usage
 
 You can easily run `target-optiply` by itself or in a pipeline using [Meltano](https://meltano.com/).
