@@ -20,6 +20,8 @@ from target_optiply.client import OptiplySink
 
 logger = logging.getLogger(__name__)
 
+_promotions_id_cache: Dict[str, str] = {}
+
 class DateTimeEncoder(json.JSONEncoder):
     """JSON encoder for datetime objects."""
 
@@ -40,6 +42,11 @@ class BaseOptiplySink(OptiplySink):
         super().__init__(target, stream_name, schema, key_properties)
         self.endpoint = self.stream_name.lower() if not self.endpoint else self.endpoint
         self._processed_records = []
+        self._stashed_external_id = None
+
+    def process_record(self, record: dict, context: dict) -> None:
+        self._stashed_external_id = record.get("externalId") or record.get("inputId")
+        super().process_record(record, context)
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         """Preprocess the record before sending to API."""
@@ -724,6 +731,12 @@ class PromotionSink(PromotionValueNormalizer, BaseOptiplySink):
         self._normalize_float_fields(attributes, ["upliftIncrease"])
         self._normalize_uplift_type(attributes, "upliftType")
 
+    def upsert_record(self, record: dict, context: dict) -> tuple:
+        record_id, success, state_updates = super().upsert_record(record, context)
+        if success and record_id and self._stashed_external_id:
+            _promotions_id_cache[str(self._stashed_external_id)] = str(record_id)
+        return record_id, success, state_updates
+
 
 class PromotionProductSink(PromotionValueNormalizer, BaseOptiplySink):
     """Optiply target sink class for promotion products."""
@@ -752,6 +765,14 @@ class PromotionProductSink(PromotionValueNormalizer, BaseOptiplySink):
     def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
         """Normalize promotion product fields before sending them to Optiply."""
         super()._add_additional_attributes(record, attributes)
+
+        remote_promotion = record.get("Remote_promotionId")
+        promotion_id = (
+            _promotions_id_cache.get(str(remote_promotion)) if remote_promotion else None
+        ) or attributes.get("promotionId")
+
+        if promotion_id is not None:
+            attributes["promotionId"] = promotion_id
 
         self._normalize_integer_fields(attributes, ["productId", "promotionId"])
         self._normalize_float_fields(attributes, ["specificUpliftIncrease"])
