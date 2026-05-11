@@ -117,6 +117,7 @@ The target supports the following Optiply entity types:
 - **Endpoint**: `/promotionProducts`
 - **Mandatory Fields**: `productId`, `promotionId`
 - **Supported Fields**: `productId`, `promotionId`, `Remote_promotionId`, `specificUpliftType`, `specificUpliftIncrease`
+- **Product ID contract**: `productId` must be the Optiply product ID. If FE provides SKU, EAN, or article code, resolve it to Optiply `productId` in the ETL before sending records to this target.
 - **Two-file import contract**: send `Promotions` before `PromotionProducts` in the same target run. `PromotionProducts.Remote_promotionId` must match the source `externalId` or `inputId` from the corresponding `Promotions` row so the target can resolve the Optiply promotion ID from the in-memory run cache.
 
 ## Usage
