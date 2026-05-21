@@ -8,6 +8,8 @@ from target_optiply.sinks import (
     BuyOrderLineSink,
     SellOrderSink,
     SellOrderLineSink,
+    PromotionSink,
+    PromotionProductSink,
 )
 
 from target_hotglue.target import TargetHotglue
@@ -65,6 +67,8 @@ class TargetOptiply(TargetHotglue):
         BuyOrderLineSink,
         SellOrderSink,
         SellOrderLineSink,
+        PromotionSink,
+        PromotionProductSink,
     ]
     MAX_PARALLELISM = 10
     name = "target-optiply"
@@ -80,6 +84,10 @@ class TargetOptiply(TargetHotglue):
             "BuyOrderLines": BuyOrderLineSink,
             "SellOrders": SellOrderSink,
             "SellOrderLines": SellOrderLineSink,
+            "Promotions": PromotionSink,
+            "PromotionProducts": PromotionProductSink,
+            "promotions": PromotionSink,
+            "promotionProducts": PromotionProductSink,
         }
         
         return sink_map.get(stream_name, BaseOptiplySink)

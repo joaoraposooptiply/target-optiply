@@ -20,6 +20,8 @@ from target_optiply.client import OptiplySink
 
 logger = logging.getLogger(__name__)
 
+_promotions_id_cache: Dict[str, str] = {}
+
 class DateTimeEncoder(json.JSONEncoder):
     """JSON encoder for datetime objects."""
 
@@ -40,6 +42,11 @@ class BaseOptiplySink(OptiplySink):
         super().__init__(target, stream_name, schema, key_properties)
         self.endpoint = self.stream_name.lower() if not self.endpoint else self.endpoint
         self._processed_records = []
+        self._stashed_external_id = None
+
+    def process_record(self, record: dict, context: dict) -> None:
+        self._stashed_external_id = record.get("externalId") or record.get("inputId")
+        super().process_record(record, context)
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         """Preprocess the record before sending to API."""
@@ -628,3 +635,145 @@ class SellOrderLineSink(BaseOptiplySink):
             The list of mandatory fields.
         """
         return ["subtotalValue", "sellOrderId", "productId", "quantity"]
+
+
+class PromotionValueNormalizer:
+    """Shared normalization helpers for promotion sinks."""
+
+    def _normalize_boolean_fields(self, attributes: Dict, fields: List[str]) -> None:
+        """Convert common string boolean values to booleans."""
+        for field in fields:
+            if field not in attributes or attributes[field] is None:
+                continue
+
+            value = attributes[field]
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, str):
+                normalized_value = value.strip().lower()
+                if normalized_value in ["true", "1", "yes"]:
+                    attributes[field] = True
+                elif normalized_value in ["false", "0", "no"]:
+                    attributes[field] = False
+                else:
+                    self.logger.warning(f"Could not convert {field} to boolean: {value}")
+                    attributes.pop(field, None)
+
+    def _normalize_float_fields(self, attributes: Dict, fields: List[str]) -> None:
+        """Convert numeric strings to floats."""
+        for field in fields:
+            if field not in attributes or attributes[field] is None:
+                continue
+
+            try:
+                attributes[field] = float(attributes[field])
+            except (ValueError, TypeError):
+                self.logger.warning(f"Could not convert {field} to float: {attributes[field]}")
+                attributes.pop(field, None)
+
+    def _normalize_uplift_type(self, attributes: Dict, field: str) -> None:
+        """Normalize uplift type values accepted by the Optiply API."""
+        if field not in attributes or attributes[field] is None:
+            return
+
+        value = str(attributes[field]).strip().lower()
+        if value in ["relative", "absolute", "close_out"]:
+            attributes[field] = value
+        else:
+            self.logger.warning(f"Invalid {field} value: {attributes[field]}")
+            attributes.pop(field, None)
+
+    def _normalize_integer_fields(self, attributes: Dict, fields: List[str]) -> None:
+        """Convert integer-like input values to integers."""
+        for field in fields:
+            if field not in attributes or attributes[field] is None:
+                continue
+
+            try:
+                attributes[field] = int(float(attributes[field]))
+            except (ValueError, TypeError):
+                self.logger.warning(f"Could not convert {field} to integer: {attributes[field]}")
+                attributes.pop(field, None)
+
+
+class PromotionSink(PromotionValueNormalizer, BaseOptiplySink):
+    """Optiply target sink class for promotions."""
+
+    endpoint = "promotions"
+
+    @property
+    def name(self) -> str:
+        return "Promotions"
+
+    field_mappings = {
+        "name": "name",
+        "startDate": "startDate",
+        "endDate": "endDate",
+        "entireShop": "entireShop",
+        "enabled": "enabled",
+        "upliftType": "upliftType",
+        "upliftIncrease": "upliftIncrease",
+    }
+
+    def get_mandatory_fields(self) -> List[str]:
+        """Get the list of mandatory fields for this sink.
+
+        Returns:
+            The list of mandatory fields.
+        """
+        return ["name", "startDate", "endDate", "entireShop", "enabled", "upliftType"]
+
+    def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
+        """Normalize promotion fields before sending them to Optiply."""
+        super()._add_additional_attributes(record, attributes)
+
+        self._normalize_boolean_fields(attributes, ["entireShop", "enabled"])
+        self._normalize_float_fields(attributes, ["upliftIncrease"])
+        self._normalize_uplift_type(attributes, "upliftType")
+
+    def upsert_record(self, record: dict, context: dict) -> tuple:
+        record_id, success, state_updates = super().upsert_record(record, context)
+        if success and record_id and self._stashed_external_id:
+            _promotions_id_cache[str(self._stashed_external_id)] = str(record_id)
+        return record_id, success, state_updates
+
+
+class PromotionProductSink(PromotionValueNormalizer, BaseOptiplySink):
+    """Optiply target sink class for promotion products."""
+
+    endpoint = "promotionProducts"
+
+    @property
+    def name(self) -> str:
+        return "PromotionProducts"
+
+    field_mappings = {
+        "productId": "productId",
+        "promotionId": "promotionId",
+        "specificUpliftType": "specificUpliftType",
+        "specificUpliftIncrease": "specificUpliftIncrease",
+    }
+
+    def get_mandatory_fields(self) -> List[str]:
+        """Get the list of mandatory fields for this sink.
+
+        Returns:
+            The list of mandatory fields.
+        """
+        return ["productId", "promotionId"]
+
+    def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
+        """Normalize promotion product fields before sending them to Optiply."""
+        super()._add_additional_attributes(record, attributes)
+
+        remote_promotion = record.get("Remote_promotionId")
+        promotion_id = (
+            _promotions_id_cache.get(str(remote_promotion)) if remote_promotion else None
+        ) or attributes.get("promotionId")
+
+        if promotion_id is not None:
+            attributes["promotionId"] = promotion_id
+
+        self._normalize_integer_fields(attributes, ["productId", "promotionId"])
+        self._normalize_float_fields(attributes, ["specificUpliftIncrease"])
+        self._normalize_uplift_type(attributes, "specificUpliftType")
