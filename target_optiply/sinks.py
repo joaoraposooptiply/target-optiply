@@ -7,6 +7,7 @@ import csv
 import json
 import logging
 import os
+import re
 import time
 import threading
 import urllib.parse
@@ -24,7 +25,18 @@ from target_optiply.client import OptiplySink
 logger = logging.getLogger(__name__)
 
 _promotions_id_cache: Dict[str, str] = {}
-_sell_order_snapshot_lock = threading.Lock()
+_snapshot_lock = threading.Lock()
+_snapshot_endpoints = {
+    "products",
+    "suppliers",
+    "supplierProducts",
+    "buyOrders",
+    "buyOrderLines",
+    "sellOrders",
+    "sellOrderLines",
+    "promotions",
+    "promotionProducts",
+}
 
 class DateTimeEncoder(json.JSONEncoder):
     """JSON encoder for datetime objects."""
@@ -148,6 +160,7 @@ class BaseOptiplySink(OptiplySink):
             else:
                 response_record_id = record_id or "unknown"
 
+            self._write_snapshot(record, response_record_id)
             self.logger.info(f"{self.stream_name} processed with id: {response_record_id}")
             return response_record_id, True, state_updates
 
@@ -155,6 +168,47 @@ class BaseOptiplySink(OptiplySink):
             error_msg = f"Error processing record: {str(e)}"
             self.logger.error(error_msg)
             return None, False, state_updates
+
+    def _write_snapshot(self, record: dict, record_id: Any) -> None:
+        """Record successful writes for routed concrete streams."""
+        if type(self) is BaseOptiplySink or self.endpoint not in _snapshot_endpoints:
+            return
+        if record_id is None or not str(record_id).strip() or str(record_id).strip().lower() == "unknown":
+            self.logger.error("%s snapshot skipped: successful API write has no Optiply ID", self.endpoint)
+            return
+
+        sell_order = self.endpoint == "sellOrders"
+        input_id = record.get("data", {}).get("attributes", {}).get("remoteId") if sell_order else None
+        if sell_order and (input_id is None or not str(input_id).strip()):
+            self.logger.error("SellOrders snapshot skipped: input remoteId is missing")
+            return
+
+        config = getattr(getattr(self, "_target", None), "_config", None)
+        snapshot_dir = config.get("snapshot_dir") if isinstance(config, dict) else None
+        snapshot_dir = snapshot_dir or os.getenv("SNAPSHOT_DIR")
+        if not snapshot_dir and os.getenv("JOB_ID"):
+            snapshot_dir = f"/home/hotglue/{os.environ['JOB_ID']}/snapshots"
+        if not snapshot_dir:
+            self.logger.error("Snapshot skipped: snapshot_dir, SNAPSHOT_DIR, and JOB_ID are unset")
+            return
+
+        filename = (
+            "export_optiply_sell_orders.snapshot.csv"
+            if sell_order
+            else f"target_optiply_{re.sub(r'(?<!^)(?=[A-Z])', '_', self.endpoint).lower()}.snapshot.csv"
+        )
+        try:
+            path = os.path.join(snapshot_dir, filename)
+            with _snapshot_lock:
+                os.makedirs(snapshot_dir, exist_ok=True)
+                write_header = not os.path.exists(path) or os.path.getsize(path) == 0
+                with open(path, "a", newline="", encoding="utf-8") as snapshot:
+                    writer = csv.writer(snapshot)
+                    if write_header:
+                        writer.writerow(["InputId", "RemoteId"] if sell_order else ["id"])
+                    writer.writerow([input_id, record_id] if sell_order else [record_id])
+        except Exception:
+            self.logger.exception("Optiply API write succeeded but snapshot could not be written")
 
     def get_field_mappings(self) -> Dict[str, str]:
         """Get the field mappings for this sink.
@@ -590,33 +644,6 @@ class SellOrderSink(BaseOptiplySink):
             The list of mandatory fields.
         """
         return ["totalValue", "placed"]
-
-    def upsert_record(self, record: dict, context: dict) -> tuple:
-        record_id, success, state_updates = super().upsert_record(record, context)
-        attributes = record.get("data", {}).get("attributes", {})
-        remote_id = attributes.get("remoteId")
-        if success and record_id and record_id != "unknown" and remote_id:
-            snapshot_dir = os.getenv("SNAPSHOT_DIR")
-            if not snapshot_dir:
-                job_id = os.getenv("JOB_ID")
-                if job_id:
-                    snapshot_dir = f"/home/hotglue/{job_id}/snapshots"
-            if not snapshot_dir:
-                self.logger.warning("Sell-order export snapshot skipped: SNAPSHOT_DIR and JOB_ID are unset")
-            else:
-                try:
-                    path = os.path.join(snapshot_dir, "export_optiply_sell_orders.snapshot.csv")
-                    with _sell_order_snapshot_lock:
-                        os.makedirs(snapshot_dir, exist_ok=True)
-                        write_header = not os.path.exists(path) or os.path.getsize(path) == 0
-                        with open(path, "a", newline="", encoding="utf-8") as snapshot:
-                            writer = csv.writer(snapshot)
-                            if write_header:
-                                writer.writerow(["remoteId", "id"])
-                            writer.writerow([remote_id, record_id])
-                except OSError:
-                    self.logger.exception("Sell-order API write succeeded but export snapshot could not be written")
-        return record_id, success, state_updates
 
     def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
         """Add any additional attributes that are not covered by field mappings.

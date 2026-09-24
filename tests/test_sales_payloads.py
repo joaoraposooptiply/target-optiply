@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, Tuple
 from unittest.mock import Mock, patch
 
@@ -19,7 +19,7 @@ def _module(name: str, **attributes: object) -> ModuleType:
     return module
 
 
-def _load_sink_classes() -> Tuple[Any, Any]:
+def _load_sink_classes() -> Tuple[Any, Any, Any]:
     singer_sdk = _module("singer_sdk")
     setattr(singer_sdk, "__path__", [])
     exceptions = _module(
@@ -68,10 +68,10 @@ def _load_sink_classes() -> Tuple[Any, Any]:
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
-        return getattr(module, "SellOrderLineSink"), getattr(module, "SellOrderSink")
+        return getattr(module, "SellOrderLineSink"), getattr(module, "SellOrderSink"), module
 
 
-SellOrderLineSink, SellOrderSink = _load_sink_classes()
+SellOrderLineSink, SellOrderSink, _sinks = _load_sink_classes()
 
 
 def _sink(sink_class: Any) -> Any:
@@ -79,6 +79,7 @@ def _sink(sink_class: Any) -> Any:
     sink.stream_name = sink_class.endpoint
     sink.endpoint = sink_class.endpoint
     sink.logger = logging.getLogger(sink_class.__name__)
+    sink._stashed_external_id = None
     return sink
 
 
@@ -93,6 +94,12 @@ class _Response:
 class _FailedResponse:
     status_code = 400
     text = "rejected"
+
+
+CREATED = ("created-order", True, {})
+FAILED = (None, False, {})
+UNKNOWN = ("unknown", True, {})
+UPDATED = ("existing-order", True, {})
 
 
 def test_nested_sell_order_payload_and_post_without_target_id():
@@ -148,7 +155,7 @@ def test_nested_sell_order_payload_and_post_without_target_id():
     request_api = Mock(return_value=_Response())
     with patch.object(sink, "request_api", new=request_api, create=True):
         result = sink.upsert_record(payload, {})
-    assert result == ("created-order", True, {})
+    assert result == CREATED
     request_api.assert_called_once_with(
         http_method="POST",
         endpoint="sellOrders",
@@ -206,24 +213,24 @@ def test_sell_order_snapshot_only_after_success_and_remote_id_present():
     ):
         request_api = Mock(return_value=_Response())
         with patch.object(sink, "request_api", new=request_api, create=True):
-            assert sink.upsert_record(payload, {}) == ("created-order", True, {})
+            assert sink.upsert_record(payload, {}) == CREATED
         snapshot = Path(snapshots) / "export_optiply_sell_orders.snapshot.csv"
         with snapshot.open(newline="", encoding="utf-8") as file:
             assert list(csv.reader(file)) == [
-                ["remoteId", "id"],
+                ["InputId", "RemoteId"],
                 ["source-order", "created-order"],
             ]
 
         failed_sink = _sink(SellOrderSink)
         failed_request = Mock(return_value=_FailedResponse())
         with patch.object(failed_sink, "request_api", new=failed_request, create=True):
-            assert failed_sink.upsert_record(payload, {}) == (None, False, {})
+            assert failed_sink.upsert_record(payload, {}) == FAILED
         failed_request.assert_called_once()
         assert snapshot.read_text(encoding="utf-8").count("source-order") == 1
 
         missing_remote_id_sink = _sink(SellOrderSink)
         missing_payload = missing_remote_id_sink.preprocess_record(
-            {"placed": "2025-01-01", "totalValue": 12}, {}
+            {"order_id": "source-order", "placed": "2025-01-01", "totalValue": 12}, {}
         )
         with patch.object(
             missing_remote_id_sink,
@@ -231,11 +238,7 @@ def test_sell_order_snapshot_only_after_success_and_remote_id_present():
             new=Mock(return_value=_Response()),
             create=True,
         ):
-            assert missing_remote_id_sink.upsert_record(missing_payload, {}) == (
-                "created-order",
-                True,
-                {},
-            )
+            assert missing_remote_id_sink.upsert_record(missing_payload, {}) == CREATED
         assert snapshot.read_text(encoding="utf-8").count("source-order") == 1
 
 
@@ -259,15 +262,95 @@ def test_parallel_sell_order_successes_write_one_snapshot_header_and_both_rows()
                 )
             )
 
-        assert results == [("created-order", True, {})] * 2
+        assert results == [CREATED] * 2
         snapshot = Path(snapshots) / "export_optiply_sell_orders.snapshot.csv"
         with snapshot.open(newline="", encoding="utf-8") as file:
             rows = list(csv.reader(file))
-        assert rows[0] == ["remoteId", "id"]
+        assert rows[0] == ["InputId", "RemoteId"]
         assert sorted(row[0] for row in rows[1:]) == [
             "source-order-1",
             "source-order-2",
         ]
+
+
+def test_configured_snapshot_dir_and_all_routed_entities():
+    endpoints = (
+        ("ProductsSink", "products"),
+        ("SupplierSink", "suppliers"),
+        ("SupplierProductSink", "supplier_products"),
+        ("BuyOrderSink", "buy_orders"),
+        ("BuyOrderLineSink", "buy_order_lines"),
+        ("SellOrderLineSink", "sell_order_lines"),
+        ("PromotionSink", "promotions"),
+        ("PromotionProductSink", "promotion_products"),
+    )
+    with TemporaryDirectory() as snapshots, TemporaryDirectory() as unused, patch.dict(
+        os.environ, {"SNAPSHOT_DIR": unused}, clear=False
+    ):
+        legacy = Path(snapshots) / "export_optiply_products.snapshot.csv"
+        legacy.write_text("id,updated_at\nprior,2025-01-01\n", encoding="utf-8")
+        for class_name, filename in endpoints:
+            sink = _sink(getattr(_sinks, class_name))
+            sink._target = SimpleNamespace(_config={"snapshot_dir": snapshots})
+            record = {"data": {"attributes": {}}}
+            with patch.object(sink, "get_mandatory_fields", return_value=[]), patch.object(
+                sink, "request_api", return_value=_Response(), create=True
+            ):
+                assert sink.upsert_record(record, {}) == CREATED
+            path = Path(snapshots) / f"target_optiply_{filename}.snapshot.csv"
+            with path.open(newline="", encoding="utf-8") as file:
+                assert list(csv.reader(file)) == [["id"], ["created-order"]]
+
+            with patch.object(sink, "get_mandatory_fields", return_value=[]), patch.object(
+                sink, "request_api", return_value=_FailedResponse(), create=True
+            ):
+                assert sink.upsert_record(record, {}) == FAILED
+            assert path.read_text(encoding="utf-8").count("created-order") == 1
+            unknown_response = Mock(status_code=201, text="", json=Mock(return_value={"data": {}}))
+            with patch.object(sink, "get_mandatory_fields", return_value=[]), patch.object(
+                sink, "request_api", return_value=unknown_response, create=True
+            ):
+                assert sink.upsert_record(record, {}) == UNKNOWN
+            assert path.read_text(encoding="utf-8").count("created-order") == 1
+        assert legacy.read_text(encoding="utf-8") == "id,updated_at\nprior,2025-01-01\n"
+        fallback = _sink(_sinks.BaseOptiplySink)
+        fallback.endpoint = "products"
+        with patch.object(fallback, "get_mandatory_fields", return_value=[]), patch.object(
+            fallback, "request_api", return_value=_Response(), create=True
+        ):
+            assert fallback.upsert_record({"data": {"attributes": {}}}, {}) == CREATED
+        assert (Path(snapshots) / "target_optiply_products.snapshot.csv").read_text(
+            encoding="utf-8"
+        ).count("created-order") == 1
+        assert list(Path(unused).iterdir()) == []
+
+
+def test_sell_order_configured_snapshot_requires_both_ids():
+    sink = _sink(SellOrderSink)
+    with TemporaryDirectory() as snapshots, patch.dict(
+        os.environ, {"SNAPSHOT_DIR": ""}, clear=False
+    ):
+        sink._target = SimpleNamespace(_config={"snapshot_dir": snapshots})
+        payload = sink.preprocess_record(
+            {"remoteId": "source-order", "placed": "2025-01-01", "totalValue": 12}, {}
+        )
+        with patch.object(sink, "request_api", return_value=_Response(), create=True):
+            assert sink.upsert_record(payload, {}) == CREATED
+        path = Path(snapshots) / "export_optiply_sell_orders.snapshot.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            assert list(csv.reader(file)) == [
+                ["InputId", "RemoteId"], ["source-order", "created-order"]
+            ]
+
+        unknown_response = Mock(status_code=201, text="", json=Mock(return_value={"data": {}}))
+        with patch.object(sink, "request_api", return_value=unknown_response, create=True):
+            assert sink.upsert_record(payload, {}) == UNKNOWN
+        assert path.read_text(encoding="utf-8").count("source-order") == 1
+
+        update = {**payload, "data": {**payload["data"], "id": "existing-order"}}
+        with patch.object(sink, "request_api", return_value=unknown_response, create=True):
+            assert sink.upsert_record(update, {}) == UPDATED
+        assert path.read_text(encoding="utf-8").count("source-order") == 2
 
 
 def _upsert_success(sink: Any, payload: dict) -> tuple:
@@ -288,5 +371,5 @@ def test_sell_order_snapshot_io_error_does_not_report_api_failure():
         (Path(snapshots) / "export_optiply_sell_orders.snapshot.csv").mkdir()
         request_api = Mock(return_value=_Response())
         with patch.object(sink, "request_api", new=request_api, create=True):
-            assert sink.upsert_record(payload, {}) == ("created-order", True, {})
+            assert sink.upsert_record(payload, {}) == CREATED
         request_api.assert_called_once()
