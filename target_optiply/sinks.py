@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import backoff
+import csv
 import json
 import logging
+import os
 import time
+import threading
 import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -21,6 +24,7 @@ from target_optiply.client import OptiplySink
 logger = logging.getLogger(__name__)
 
 _promotions_id_cache: Dict[str, str] = {}
+_sell_order_snapshot_lock = threading.Lock()
 
 class DateTimeEncoder(json.JSONEncoder):
     """JSON encoder for datetime objects."""
@@ -575,7 +579,8 @@ class SellOrderSink(BaseOptiplySink):
     field_mappings = {
         "placed": "placed",
         "completed": "completed",
-        "totalValue": "totalValue"
+        "totalValue": "totalValue",
+        "remoteId": "remoteId"
     }
 
     def get_mandatory_fields(self) -> List[str]:
@@ -585,6 +590,33 @@ class SellOrderSink(BaseOptiplySink):
             The list of mandatory fields.
         """
         return ["totalValue", "placed"]
+
+    def upsert_record(self, record: dict, context: dict) -> tuple:
+        record_id, success, state_updates = super().upsert_record(record, context)
+        attributes = record.get("data", {}).get("attributes", {})
+        remote_id = attributes.get("remoteId")
+        if success and record_id and record_id != "unknown" and remote_id:
+            snapshot_dir = os.getenv("SNAPSHOT_DIR")
+            if not snapshot_dir:
+                job_id = os.getenv("JOB_ID")
+                if job_id:
+                    snapshot_dir = f"/home/hotglue/{job_id}/snapshots"
+            if not snapshot_dir:
+                self.logger.warning("Sell-order export snapshot skipped: SNAPSHOT_DIR and JOB_ID are unset")
+            else:
+                try:
+                    path = os.path.join(snapshot_dir, "export_optiply_sell_orders.snapshot.csv")
+                    with _sell_order_snapshot_lock:
+                        os.makedirs(snapshot_dir, exist_ok=True)
+                        write_header = not os.path.exists(path) or os.path.getsize(path) == 0
+                        with open(path, "a", newline="", encoding="utf-8") as snapshot:
+                            writer = csv.writer(snapshot)
+                            if write_header:
+                                writer.writerow(["remoteId", "id"])
+                            writer.writerow([remote_id, record_id])
+                except OSError:
+                    self.logger.exception("Sell-order API write succeeded but export snapshot could not be written")
+        return record_id, success, state_updates
 
     def _add_additional_attributes(self, record: Dict, attributes: Dict) -> None:
         """Add any additional attributes that are not covered by field mappings.
