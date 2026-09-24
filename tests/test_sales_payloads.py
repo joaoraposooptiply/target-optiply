@@ -163,6 +163,33 @@ def test_nested_sell_order_payload_and_post_without_target_id():
     )
 
 
+def test_sell_order_remote_id_is_sdk_external_id_and_stays_in_optiply_payload():
+    sink = _sink(SellOrderSink)
+    payload = sink.preprocess_record(
+        {"remoteId": "source-order", "placed": "2025-01-01", "totalValue": 12}, {}
+    )
+    assert payload["externalId"] == "source-order"
+    assert payload["data"]["attributes"]["remoteId"] == "source-order"
+
+    # HotglueSink removes externalId before handing the record to upsert_record.
+    sdk_payload = dict(payload)
+    assert sdk_payload.pop("externalId", None) == "source-order"
+    request_api = Mock(return_value=_Response())
+    with patch.object(sink, "request_api", new=request_api, create=True):
+        assert sink.upsert_record(sdk_payload, {}) == CREATED
+    request_api.assert_called_once_with(
+        http_method="POST",
+        endpoint="sellOrders",
+        request_data=sdk_payload,
+    )
+    assert sdk_payload["data"]["attributes"]["remoteId"] == "source-order"
+
+    missing_remote_id = sink.preprocess_record(
+        {"order_id": "source-order", "placed": "2025-01-01", "totalValue": 12}, {}
+    )
+    assert "externalId" not in missing_remote_id
+
+
 def test_sell_order_total_fallback_and_standalone_line_placed():
     order_sink = _sink(SellOrderSink)
     payload = order_sink.preprocess_record(

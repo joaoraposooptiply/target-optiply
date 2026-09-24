@@ -637,6 +637,12 @@ class SellOrderSink(BaseOptiplySink):
         "remoteId": "remoteId"
     }
 
+    def preprocess_record(self, record: dict, context: dict) -> dict:
+        payload = super().preprocess_record(record, context)
+        if "remoteId" in record:
+            payload["externalId"] = record["remoteId"]
+        return payload
+
     def get_mandatory_fields(self) -> List[str]:
         """Get the list of mandatory fields for this sink.
 
