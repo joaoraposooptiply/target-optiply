@@ -614,10 +614,7 @@ class SellOrderSink(BaseOptiplySink):
                 placed = item.get("placed")
                 if placed is not None and (not isinstance(placed, str) or placed.strip()):
                     line_attributes["placed"] = placed
-                sell_order_lines.append({
-                    "type": "sellOrderLines",
-                    "attributes": line_attributes
-                })
+                sell_order_lines.append(line_attributes)
             if "totalValue" not in attributes:
                 attributes["totalValue"] = str(total_value)
             attributes["orderLines"] = sell_order_lines
