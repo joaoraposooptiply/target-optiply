@@ -5,6 +5,7 @@ from __future__ import annotations
 import backoff
 import json
 import logging
+import threading
 import time
 import urllib.parse
 from datetime import datetime
@@ -21,6 +22,9 @@ from target_optiply.client import OptiplySink
 logger = logging.getLogger(__name__)
 
 _promotions_id_cache: Dict[str, str] = {}
+
+# Sinks share the target state dict, so record outcomes are written under one lock.
+_state_lock = threading.Lock()
 
 class DateTimeEncoder(json.JSONEncoder):
     """JSON encoder for datetime objects."""
@@ -42,14 +46,33 @@ class BaseOptiplySink(OptiplySink):
         super().__init__(target, stream_name, schema, key_properties)
         self.endpoint = self.stream_name.lower() if not self.endpoint else self.endpoint
         self._processed_records = []
-        self._stashed_external_id = None
+        # Per-thread record context: with write workers several records of this sink are in flight.
+        self._record_context = threading.local()
 
     def process_record(self, record: dict, context: dict) -> None:
-        self._stashed_external_id = record.get("externalId") or record.get("inputId")
-        super().process_record(record, context)
+        if not self.latest_state:
+            self.init_state()
+        external_id = record.get("externalId") or record.get("inputId")
+        keys = {self.build_record_hash(record)}
+        record_id = (record.get("data") or {}).get("id")
+        if record_id is not None:
+            keys.add(("id", str(record_id)))
+        process = super().process_record
+
+        def write() -> None:
+            self._record_context.external_id = external_id
+            process(record, context)
+
+        self._target.submit_write(self, keys, write)
+
+    def update_state(self, state: dict, is_duplicate=False, record=None):
+        with _state_lock:
+            super().update_state(state, is_duplicate=is_duplicate, record=record)
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         """Preprocess the record before sending to API."""
+        self._target.claim_writes(self)
+
         # Build attributes using field mappings
         attributes = self.build_attributes(record, self.get_field_mappings())
 
@@ -754,8 +777,9 @@ class PromotionSink(PromotionValueNormalizer, BaseOptiplySink):
 
     def upsert_record(self, record: dict, context: dict) -> tuple:
         record_id, success, state_updates = super().upsert_record(record, context)
-        if success and record_id and self._stashed_external_id:
-            _promotions_id_cache[str(self._stashed_external_id)] = str(record_id)
+        external_id = getattr(self._record_context, "external_id", None)
+        if success and record_id and external_id:
+            _promotions_id_cache[str(external_id)] = str(record_id)
         return record_id, success, state_updates
 
 

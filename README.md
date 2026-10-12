@@ -48,6 +48,7 @@ The following configuration options are required:
 |----------|-------------|---------|
 | `optiply_base_url` | Base URL for Optiply API | `https://api.optiply.com/v1` |
 | `optiply_dashboard_url` | Dashboard URL for authentication | `https://dashboard.optiply.nl/api` |
+| `OPTIPLY_WRITE_WORKERS` | Parallel write workers per stream (1-5; empty or invalid values fall back to 1). Streams still run one after another, and a record sharing a hash or Optiply ID with an in-flight write waits for it. | `1` (sequential) |
 
 ### Configuration Example
 

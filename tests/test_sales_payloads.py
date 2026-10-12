@@ -75,7 +75,7 @@ def _sink(sink_class: Any) -> Any:
     sink.stream_name = sink_class.endpoint
     sink.endpoint = sink_class.endpoint
     sink.logger = logging.getLogger(sink_class.__name__)
-    sink._stashed_external_id = None
+    sink._target = Mock()
     return sink
 
 
