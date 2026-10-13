@@ -65,9 +65,10 @@ class BaseOptiplySink(OptiplySink):
 
         self._target.submit_write(self, keys, write)
 
-    def update_state(self, state: dict, is_duplicate=False, record=None):
+    def update_state(self, *args, **kwargs):
+        # Forward unchanged: target-hotglue 0.0.16 (the pinned runtime) has no `record` argument.
         with _state_lock:
-            super().update_state(state, is_duplicate=is_duplicate, record=record)
+            super().update_state(*args, **kwargs)
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         """Preprocess the record before sending to API."""
