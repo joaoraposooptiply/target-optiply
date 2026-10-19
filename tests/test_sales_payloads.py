@@ -215,3 +215,60 @@ def test_sell_order_total_fallback_and_standalone_line_placed():
         {key: value for key, value in line_record.items() if key != "placed"}, {}
     )
     assert "placed" not in missing_line["data"]["attributes"]
+
+
+def test_etl_skipped_sell_order_is_counted_as_existing_without_api_call():
+    sink = _sink(SellOrderSink)
+    sink.latest_state = {
+        "summary": {"SellOrders": {"success": 0, "fail": 0, "existing": 0, "updated": 0}},
+        "bookmarks": {"SellOrders": []},
+    }
+    payload = sink.preprocess_record(
+        {"remoteId": "o1", "skip": True, "skipReason": "line 2: product X not found"}, {}
+    )
+    request_api = Mock()
+    with patch.object(sink, "request_api", new=request_api, create=True):
+        sink.process_record(payload, {})
+
+    request_api.assert_not_called()
+    sink._target.submit_write.assert_not_called()
+    assert sink.latest_state["summary"]["SellOrders"] == {
+        "success": 0, "fail": 0, "existing": 1, "updated": 0
+    }
+    assert sink.latest_state["bookmarks"]["SellOrders"] == [
+        {"success": True, "existing": True, "externalId": "o1",
+         "skipReason": "line 2: product X not found"}
+    ]
+
+    # Only a boolean true skips; anything else is a normal write.
+    not_skipped = sink.preprocess_record({"remoteId": "o2", "skip": "false", "placed": "2025-01-01"}, {})
+    assert "data" in not_skipped and "skip" not in not_skipped
+
+
+def test_export_details_count_skipped_records_as_existing():
+    target_hotglue = _module("target_hotglue")
+    setattr(target_hotglue, "__path__", [])
+    sink_names = [
+        "BaseOptiplySink", "ProductsSink", "SupplierSink", "SupplierProductSink", "BuyOrderSink",
+        "BuyOrderLineSink", "SellOrderSink", "SellOrderLineSink", "PromotionSink",
+        "PromotionProductSink",
+    ]
+    fake_modules = {
+        "target_hotglue": target_hotglue,
+        "target_hotglue.target": _module("target_hotglue.target", TargetHotglue=object),
+        "target_optiply.sinks": _module("target_optiply.sinks", **{n: object for n in sink_names}),
+    }
+    target_path = Path(__file__).resolve().parents[1] / "target_optiply" / "target.py"
+    spec = importlib.util.spec_from_file_location("_test_target_optiply_target", target_path)
+    with patch.dict(sys.modules, fake_modules, clear=False):
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+    details = module.TargetOptiply._simplify_records_dict(None, {
+        "SellOrders": [
+            {"success": True, "id": "1"},
+            {"success": False},
+            {"success": True, "existing": True, "externalId": "o3"},
+        ]
+    })
+    assert details == {"SellOrders": {"total": 3, "success": 1, "failed": 1, "existing": 1}}

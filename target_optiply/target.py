@@ -183,14 +183,19 @@ class TargetOptiply(TargetHotglue):
         simplified_dict = {}
         for stream_name, records in records_dict.items():
             if isinstance(records, list):
-                # Count successes and failures
-                success_count = sum(1 for record in records if record.get("success", False))
-                fail_count = len(records) - success_count
-                
+                # ETL-skipped records are stored with success and existing; count them only as existing.
+                existing_count = sum(1 for record in records if record.get("existing", False))
+                success_count = sum(
+                    1 for record in records
+                    if record.get("success", False) and not record.get("existing", False)
+                )
+                fail_count = len(records) - success_count - existing_count
+
                 simplified_dict[stream_name] = {
                     "total": len(records),
                     "success": success_count,
-                    "failed": fail_count
+                    "failed": fail_count,
+                    "existing": existing_count,
                 }
             else:
                 # Keep as is if not a list

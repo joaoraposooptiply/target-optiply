@@ -53,6 +53,18 @@ class BaseOptiplySink(OptiplySink):
         if not self.latest_state:
             self.init_state()
         external_id = record.get("externalId") or record.get("inputId")
+        if record.get("skip") is True:
+            # ETL-marked skip: no API call, counted as "existing" in the export summary.
+            state = {"success": True, "existing": True}
+            if external_id:
+                state["externalId"] = external_id
+            if record.get("skipReason"):
+                state["skipReason"] = record["skipReason"]
+            self.logger.info(f"{self.name} record skipped by ETL: {state}")
+            with _state_lock:
+                self.latest_state["summary"][self.name]["existing"] += 1
+                self.latest_state["bookmarks"][self.name].append(state)
+            return
         keys = {self.build_record_hash(record)}
         record_id = (record.get("data") or {}).get("id")
         if record_id is not None:
@@ -73,6 +85,8 @@ class BaseOptiplySink(OptiplySink):
     def preprocess_record(self, record: dict, context: dict) -> dict:
         """Preprocess the record before sending to API."""
         self._target.claim_writes(self)
+        if record.get("skip") is True:
+            return {"skip": True, "skipReason": record.get("skipReason")}
 
         # Build attributes using field mappings
         attributes = self.build_attributes(record, self.get_field_mappings())
